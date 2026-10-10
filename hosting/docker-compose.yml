@@ -1,0 +1,12 @@
+services:
+  raygun-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RAYGUN_VERSION: ${RAYGUN_VERSION:-0.1.0}
+    image: raygun-web:${RAYGUN_VERSION:-0.1.0}
+    container_name: raygun-web
+    ports:
+      - "${RAYGUN_PORT:-8080}:80"
+    restart: unless-stopped
