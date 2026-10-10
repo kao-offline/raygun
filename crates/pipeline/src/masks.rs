@@ -23,6 +23,8 @@ pub enum MatteKind {
     Hair,
     Teeth,
     Glasses,
+    /// A depth map shipped with the source (0 = far, 255 = near).
+    Depth,
 }
 
 /// Segmentation mattes that came with the source: 0..255 alpha planes, each covering the whole
@@ -70,6 +72,7 @@ impl Mattes {
         };
         match shape {
             MaskShape::Sky => self.of(&[Sky]),
+            MaskShape::DepthRange { .. } => self.of(&[Depth]),
             MaskShape::Subject => person(),
             MaskShape::People { parts, .. } => {
                 let wanted: Vec<MatteKind> = parts
@@ -274,7 +277,30 @@ pub fn shape_alpha(shape: &MaskShape, frame: &Frame, w: usize, h: usize, img: &R
             s.data.iter_mut().for_each(|v| *v = 1.0 - *v);
             out = s;
         }
-        MaskShape::DepthRange { .. } | MaskShape::Landscape { .. } => {}
+        MaskShape::DepthRange { lo, hi, feather } => {
+            let depth = matte_alpha(&fitting, frame, w, h);
+            if fitting.is_empty() {
+                // Classical fallback until a depth model lands (RapidRAW uses Depth
+                // Anything v2): local sharpness as a focus cue, normalized 0..1.
+                // Documented approximation — a real depth map wins when present.
+                let blur = lightcraft_raster::blur::gaussian(log_l, 0.02 * frame_px(frame, w));
+                let mut max_c = 1e-6f32;
+                for (a, b) in log_l.data.iter().zip(&blur.data) {
+                    max_c = max_c.max((a - b).abs());
+                }
+                let (lo, hi, f) = (*lo as f32, *hi as f32, (*feather as f32).max(1e-3));
+                for (v, (a, b)) in out.data.iter_mut().zip(log_l.data.iter().zip(&blur.data)) {
+                    let sharp = ((a - b).abs() / max_c).clamp(0.0, 1.0);
+                    *v = smooth(lo - f, lo, sharp) * (1.0 - smooth(hi, hi + f, sharp));
+                }
+            } else {
+                let (lo, hi, f) = (*lo as f32, *hi as f32, (*feather as f32).max(1e-3));
+                for (v, d) in out.data.iter_mut().zip(&depth.data) {
+                    *v = smooth(lo - f, lo, *d) * (1.0 - smooth(hi, hi + f, *d));
+                }
+            }
+        }
+        MaskShape::Landscape { .. } => {}
     }
     out
 }
@@ -866,5 +892,33 @@ mod tests {
         assert!(hair.get(190, 50) > 0.99 && hair.get(10, 50) < 0.01);
         let lips = MaskShape::People { person: 0, parts: vec!["Lips".into()] };
         assert_eq!(eval(&lips), shape_alpha(&lips, &f, w, h, &img, &l, 0.0, None));
+    }
+
+    /// DepthRange follows the source's depth matte when it ships one, else the
+    /// classical focus-sharpness fallback (documented approximation until a
+    /// depth model lands). Near = sharp here: the checkerboard's sharp half
+    /// selects, the blurred half does not.
+    #[test]
+    fn depth_range_uses_matte_or_focus_fallback() {
+        let (w, h) = (120, 60);
+        // Left half sharp checkerboard, right half flat: sharpness differs.
+        let img = Rgb32f::from_fn(w, h, |x, y| {
+            let v = if x < 60 { if (x + y) % 2 == 0 { 0.8 } else { 0.1 } } else { 0.4 };
+            [v, v, v]
+        });
+        let l = img.map(crate::local::log_lum);
+        let f = frame(w, h);
+        let shape = MaskShape::DepthRange { lo: 0.5, hi: 1.0, feather: 0.1 };
+        let fallback = shape_alpha(&shape, &f, w, h, &img, &l, 0.0, None);
+        assert!(fallback.get(15, 30) > fallback.get(90, 30), "{} vs {}", fallback.get(15, 30), fallback.get(90, 30));
+        // A shipped depth matte wins over the fallback.
+        let mut mattes = Mattes::default();
+        mattes.push(MatteKind::Depth, left_matte(w, h, 0.5));
+        let matte = shape_alpha(&shape, &f, w, h, &img, &l, 0.0, Some(&mattes));
+        assert!(matte.get(15, 30) > 0.99 && matte.get(90, 30) < 0.01, "{} {}", matte.get(15, 30), matte.get(90, 30));
+        // Mattes of other kinds leave the fallback alone.
+        let mut hair = Mattes::default();
+        hair.push(MatteKind::Hair, left_matte(w, h, 0.5));
+        assert_eq!(shape_alpha(&shape, &f, w, h, &img, &l, 0.0, Some(&hair)), fallback);
     }
 }

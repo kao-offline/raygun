@@ -513,6 +513,7 @@ fn matte_kind(name: &str) -> Option<lightcraft_pipeline::masks::MatteKind> {
         "semanticteethmatte" => Teeth,
         "semanticglassesmatte" => Glasses,
         "portraiteffectsmatte" => Person,
+        k if k.contains("depth") => Depth,
         _ => return None,
     })
 }
