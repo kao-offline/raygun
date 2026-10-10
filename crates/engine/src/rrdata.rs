@@ -188,6 +188,20 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
             }
         }
     }
+    // toneMapper: basic/agx/aces (also "filmic" as base alias).
+    if let Some(t) = json.get("toneMapper").and_then(Value::as_str) {
+        let mode = match t.to_ascii_lowercase().as_str() {
+            "agx" => Some(1.0),
+            "aces" | "simplified-aces" | "simplified_aces" => Some(2.0),
+            "basic" | "base" | "filmic" | "reinhard" => Some(0.0),
+            _ => None,
+        };
+        if let Some(m) = mode {
+            set_mapped(settings, &mut out, "light.toneMapper", m);
+        } else {
+            out.unmapped.push("toneMapper".to_string());
+        }
+    }
     // Known-but-unmapped in v1 (no silent misrender): calibration scale
     // mismatch, masks/AI, geometry/crop, LUT files, brightness.
     for key in [
@@ -199,7 +213,6 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
         "lensBlurEnabled",
         "lutPath",
         "lutIntensity",
-        "toneMapper",
     ] {
         if json.get(key).is_some() {
             out.unmapped.push(key.to_string());
@@ -220,15 +233,18 @@ mod tests {
             "exposure": 1.5, "contrast": 10.0, "highlights": -45.0,
             "shadows": 38.0, "whites": 5.0, "blacks": -5.0,
             "vibrance": 22.0, "clarity": 28.0, "dehaze": 18.0,
+            "toneMapper": "agx",
             "colorCalibration": {"redHue": 10.0},
-            "lutPath": "film.cube", "toneMapper": "agx", "crop": {}
+            "lutPath": "film.cube", "crop": {}
         });
         let r = apply_rrdata(&mut s, &j);
         assert!((s.light.exposure - 1.5).abs() < 1e-9);
         assert!((s.light.highlights + 45.0).abs() < 1e-9);
         assert!((s.light.shadows - 38.0).abs() < 1e-9);
+        assert!((s.light.tone_mapper - 1.0).abs() < 1e-9);
         assert!(r.applied.contains(&"light.exposure".to_string()));
-        for k in ["colorCalibration", "lutPath", "toneMapper", "crop"] {
+        assert!(r.applied.contains(&"light.toneMapper".to_string()));
+        for k in ["colorCalibration", "lutPath", "crop"] {
             assert!(r.unmapped.contains(&k.to_string()), "missing {k}");
         }
     }

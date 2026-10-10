@@ -243,6 +243,44 @@ impl ToneMap {
         let v = self.lut[i] + (self.lut[i + 1] - self.lut[i]) * t;
         if ev < LUT_MIN_EV { v * (y / (GREY * 2f32.powf(LUT_MIN_EV))) } else { v }
     }
+
+    /// Tone mapper override (0 = base, 1 = AgX-style, 2 = ACES-style).
+    /// Mode 0 returns the map unchanged so existing photos keep their look;
+    /// modes 1/2 reshape the shoulder only (monotone, bounded at the same peak).
+    /// RapidRAW reference: AgX recovers sky highlights with a softer rolloff,
+    /// simplified ACES adds midtone contrast with a firmer shoulder.
+    pub fn reshaped(mut self, mapper: u8) -> Self {
+        if mapper == 0 || self.lut.len() != LUT_N {
+            return self;
+        }
+        let peak = self.lut.iter().fold(1.0f32, |a, &v| if v.is_finite() { a.max(v) } else { a });
+        for o in &mut self.lut {
+            if !o.is_finite() {
+                continue;
+            }
+            let v = (*o).clamp(0.0, peak);
+            *o = match mapper {
+                1 => {
+                    // AgX-style: compress the top quarter toward white for a long soft shoulder.
+                    let t = ((v - 0.75) / 0.25).clamp(0.0, 1.0);
+                    v - 0.06 * t * t * (peak.min(1.0))
+                }
+                _ => {
+                    // ACES-style: gentle S around mid-grey for firmer midtone contrast.
+                    let t = ((v - 0.18) / 0.82).clamp(0.0, 1.0);
+                    (v + 0.03 * (t * (1.0 - t) * 4.0) * 0.25).min(peak)
+                }
+            }
+            .clamp(0.0, peak);
+        }
+        // Re-enforce monotonicity (reshape is smooth, but hostile LUTs must never invert tone).
+        for i in 1..self.lut.len() {
+            if self.lut[i] < self.lut[i - 1] {
+                self.lut[i] = self.lut[i - 1];
+            }
+        }
+        self
+    }
 }
 
 fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
@@ -408,5 +446,35 @@ mod tests {
         assert!(ToneMap::new(0.0, 60.0, 0.0).apply(0.8) > base.apply(0.8));
         assert!(ToneMap::new(0.0, 0.0, -60.0).apply(0.01) < base.apply(0.01));
         assert!(ToneMap::new(0.0, 0.0, 60.0).apply(0.01) > base.apply(0.01));
+    }
+
+    #[test]
+    fn mapper_modes_stay_monotone_and_bounded() {
+        let base = ToneMap::new(0.0, 0.0, 0.0);
+        // Mode 0 is the identity: existing photos render byte-identical.
+        assert_eq!(base.clone().reshaped(0).lut(), base.lut());
+        for mapper in [1u8, 2u8] {
+            let t = ToneMap::new(0.0, 0.0, 0.0).reshaped(mapper);
+            let mut prev = -1.0f32;
+            for i in 0..2000 {
+                let y = 1e-5 * 1.012f32.powi(i);
+                let o = t.apply(y);
+                assert!((0.0..=1.0).contains(&o), "mapper {mapper} at {y}: {o}");
+                assert!(o >= prev - 1e-6, "mapper {mapper} inverted at {y}");
+                prev = o;
+            }
+            // Midtones barely move; the shoulder does.
+            assert!((t.apply(0.18) - base.apply(0.18)).abs() < 0.02, "mapper {mapper}");
+            if mapper == 1 {
+                assert!((t.apply(2.0) - base.apply(2.0)).abs() > 1e-4, "mapper {mapper} no-op");
+            } else {
+                assert!((t.apply(0.4) - base.apply(0.4)).abs() > 1e-5, "mapper {mapper} no-op");
+            }
+        }
+        // AgX rolls highlights softer than base; ACES lifts midtone contrast.
+        let agx = ToneMap::new(0.0, 0.0, 0.0).reshaped(1);
+        let aces = ToneMap::new(0.0, 0.0, 0.0).reshaped(2);
+        assert!(agx.apply(2.0) < base.apply(2.0));
+        assert!(aces.apply(0.4) >= base.apply(0.4) - 1e-6);
     }
 }

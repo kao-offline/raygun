@@ -283,6 +283,20 @@ pub struct Light {
     pub shadows: f64,
     pub whites: f64,
     pub blacks: f64,
+    /// Tone mapper override (RapidRAW-style): 0 = base filmic shoulder,
+    /// 1 = AgX-style soft highlight rolloff, 2 = ACES-style contrast shoulder.
+    /// Default 0 reproduces the existing rendering exactly.
+    pub tone_mapper: f64,
+}
+
+impl Light {
+    /// The mapper as 0/1/2 (rounds and clamps hostile input).
+    pub fn tone_mapper_mode(&self) -> u8 {
+        if !self.tone_mapper.is_finite() {
+            return 0;
+        }
+        self.tone_mapper.round().clamp(0.0, 2.0) as u8
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
