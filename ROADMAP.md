@@ -2,6 +2,15 @@
 
 > Phase 0 fork of LightCraft (`storytold/lightcraft`, shallow-cloned 2026-10-10). UI reused verbatim from `crates/ui-egui`. RapidRAW is a feature reference. License is AGPL-3.0-or-later. Desktop v1; WASM kept compatible; Android later.
 
+## Raygun progress (M0–M4 landed, all loop-green)
+
+- **M0:** Fork green — AGPL relicense, Raygun branding (`assets/raygun.svg`), agent loop (`tools/agent-loop/`), GH project doc (`.github/RAYGUN-PROJECT.md`). `cargo check -p lightcraft` green.
+- **M1:** RapidRAW `.rrdata` importer as `develop.importRrdata` — core tone/color/detail/curves/HSL/grading map as modes of existing controls; calibration/masks/geometry/LUT-files reported unmapped. CLI-visible (`lightcraft-cli commands`).
+- **M2:** Tone mapper modes — new `light.toneMapper` control (0 base / 1 AgX-style / 2 ACES-style) reshaping only the tone shoulder; default 0 renders byte-identical. `.rrdata` `toneMapper` now maps.
+- **M3:** Depth-range mask kind + depth mattes + `ai.status` — `mask.add kind=depthRange` uses shipped depth mattes when present, else a documented focus-sharpness fallback; AI stays opt-in (AI-free default), `ai.status` reports it.
+- **M4:** `cull.duplicates` (signature-based near-duplicate groups + optional reject-others) and `export.estimate` (in-memory render reporting exact bytes, writes nothing).
+- **Next:** M5 WASM verification, PNG white-frame icon export, `lightcraft` → `raygun` binary rename, film/LUT preset packs, BM3D + depth-model follow-ups.
+
 Milestones toward full Adobe Lightroom parity (cloud Lightroom first, then every Lightroom Classic module), with wall-clock
 estimates for continuous (24/7) agent-driven development with 4–6 parallel agents. Estimates are calibrated on the sibling
 projects (DrawCraft reached its first four milestones in ≈ 4½ h) and are revised as milestones land.

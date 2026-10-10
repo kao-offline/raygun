@@ -82,55 +82,51 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
         ("vignetteAmount", "vignette.amount"),
     ];
     for (rr, ctl) in DIRECT {
-        if let Some(v) = num(json, rr) {
-            if v.is_finite() {
-                // wb.tint in RapidRAW relative mode shares the -100..100 range.
-                set_mapped(settings, &mut out, ctl, v);
-            }
+        if let Some(v) = num(json, rr)
+            && v.is_finite()
+        {
+            // wb.tint in RapidRAW relative mode shares the -100..100 range.
+            set_mapped(settings, &mut out, ctl, v);
         }
     }
     // structure -> texture (closest existing control; flagged by name).
-    if let Some(v) = num(json, "structure") {
-        if v.is_finite() {
-            set_mapped(settings, &mut out, "effects.texture", v);
-        }
+    if let Some(v) = num(json, "structure")
+        && v.is_finite()
+    {
+        set_mapped(settings, &mut out, "effects.texture", v);
     }
     // sharpness: RapidRAW UI 0..80 -> Raygun 0..150.
-    if let Some(v) = num(json, "sharpness") {
-        if v.is_finite() && v >= 0.0 {
-            set_mapped(settings, &mut out, "detail.sharpenAmount", v * 1.5);
-        }
+    if let Some(v) = num(json, "sharpness")
+        && v.is_finite()
+        && v >= 0.0
+    {
+        set_mapped(settings, &mut out, "detail.sharpenAmount", v * 1.5);
     }
     // temperature: only Kelvin values map directly; relative -100..100 does not.
-    if let Some(v) = num(json, "temperature") {
-        if v.is_finite() {
-            if (2000.0..=50000.0).contains(&v) {
-                set_mapped(settings, &mut out, "wb.temp", v);
-            } else {
-                out.unmapped.push("temperature(relative)".to_string());
-            }
+    if let Some(v) = num(json, "temperature")
+        && v.is_finite()
+    {
+        if (2000.0..=50000.0).contains(&v) {
+            set_mapped(settings, &mut out, "wb.temp", v);
+        } else {
+            out.unmapped.push("temperature(relative)".to_string());
         }
     }
     // curves: {luma,red,green,blue} arrays of {x,y} in 0..255.
     if let Some(curves) = json.get("curves").and_then(Value::as_object) {
-        let map = [
-            ("luma", "master"),
-            ("red", "red"),
-            ("green", "green"),
-            ("blue", "blue"),
-        ];
+        let map = [("luma", "master"), ("red", "red"), ("green", "green"), ("blue", "blue")];
         for (rr, lc) in map {
-            if let Some(arr) = curves.get(rr).and_then(Value::as_array) {
-                if let Some(pts) = curve_points(Some(arr)) {
-                    match lc {
-                        "master" => settings.curve.master = pts,
-                        "red" => settings.curve.red = pts,
-                        "green" => settings.curve.green = pts,
-                        "blue" => settings.curve.blue = pts,
-                        _ => {}
-                    }
-                    out.applied.push(format!("curve.{lc}"));
+            if let Some(arr) = curves.get(rr).and_then(Value::as_array)
+                && let Some(pts) = curve_points(Some(arr))
+            {
+                match lc {
+                    "master" => settings.curve.master = pts,
+                    "red" => settings.curve.red = pts,
+                    "green" => settings.curve.green = pts,
+                    "blue" => settings.curve.blue = pts,
+                    _ => {}
                 }
+                out.applied.push(format!("curve.{lc}"));
             }
         }
     }
@@ -149,10 +145,10 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
         for (rr_band, lc_band) in BANDS {
             if let Some(band) = hsl.get(*rr_band).and_then(Value::as_object) {
                 for (rr_k, suffix) in [("hue", "hue"), ("saturation", "sat"), ("luminance", "lum")] {
-                    if let Some(v) = band.get(rr_k).and_then(Value::as_f64) {
-                        if v.is_finite() {
-                            set_mapped(settings, &mut out, &format!("mixer.{lc_band}.{suffix}"), v);
-                        }
+                    if let Some(v) = band.get(rr_k).and_then(Value::as_f64)
+                        && v.is_finite()
+                    {
+                        set_mapped(settings, &mut out, &format!("mixer.{lc_band}.{suffix}"), v);
                     }
                 }
             }
@@ -160,32 +156,27 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
     }
     // Color grading: {shadows,midtones,highlights,global} x {hue,sat/lum} + blending/balance.
     if let Some(cg) = json.get("colorGrading").and_then(Value::as_object) {
-        const SECTIONS: &[(&str, &str)] = &[
-            ("shadows", "shadows"),
-            ("midtones", "midtones"),
-            ("highlights", "highlights"),
-            ("global", "global"),
-        ];
+        const SECTIONS: &[(&str, &str)] = &[("shadows", "shadows"), ("midtones", "midtones"), ("highlights", "highlights"), ("global", "global")];
         for (rr_s, lc_s) in SECTIONS {
             if let Some(sec) = cg.get(*rr_s).and_then(Value::as_object) {
                 for (rr_k, lc_k) in [("hue", "hue"), ("saturation", "sat"), ("luminance", "lum")] {
-                    if let Some(v) = sec.get(rr_k).and_then(Value::as_f64) {
-                        if v.is_finite() {
-                            set_mapped(settings, &mut out, &format!("grading.{lc_s}.{lc_k}"), v);
-                        }
+                    if let Some(v) = sec.get(rr_k).and_then(Value::as_f64)
+                        && v.is_finite()
+                    {
+                        set_mapped(settings, &mut out, &format!("grading.{lc_s}.{lc_k}"), v);
                     }
                 }
             }
         }
-        if let Some(v) = cg.get("blending").and_then(Value::as_f64) {
-            if v.is_finite() {
-                set_mapped(settings, &mut out, "grading.blending", v);
-            }
+        if let Some(v) = cg.get("blending").and_then(Value::as_f64)
+            && v.is_finite()
+        {
+            set_mapped(settings, &mut out, "grading.blending", v);
         }
-        if let Some(v) = cg.get("balance").and_then(Value::as_f64) {
-            if v.is_finite() {
-                set_mapped(settings, &mut out, "grading.balance", v);
-            }
+        if let Some(v) = cg.get("balance").and_then(Value::as_f64)
+            && v.is_finite()
+        {
+            set_mapped(settings, &mut out, "grading.balance", v);
         }
     }
     // toneMapper: basic/agx/aces (also "filmic" as base alias).
@@ -204,16 +195,7 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
     }
     // Known-but-unmapped in v1 (no silent misrender): calibration scale
     // mismatch, masks/AI, geometry/crop, LUT files, brightness.
-    for key in [
-        "colorCalibration",
-        "brightness",
-        "masks",
-        "aiPatches",
-        "crop",
-        "lensBlurEnabled",
-        "lutPath",
-        "lutIntensity",
-    ] {
+    for key in ["colorCalibration", "brightness", "masks", "aiPatches", "crop", "lensBlurEnabled", "lutPath", "lutIntensity"] {
         if json.get(key).is_some() {
             out.unmapped.push(key.to_string());
         }

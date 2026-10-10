@@ -171,10 +171,7 @@ fn duplicates(s: &mut Session, p: &Value) -> Result<Value> {
             }
             Some(v)
         });
-        let sharp = s
-            .source_now(id, crate::media::SourceLevel::Thumb)
-            .map(|src| lightcraft_pipeline::cull::sharpness(&src))
-            .unwrap_or(0.0);
+        let sharp = s.source_now(id, crate::media::SourceLevel::Thumb).map(|src| lightcraft_pipeline::cull::sharpness(&src)).unwrap_or(0.0);
         if let Some(v) = sig {
             sigs.push((id, v, sharp));
         }

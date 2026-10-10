@@ -31,11 +31,7 @@ fn shape_from(kind: &str, p: &Value, c: &str) -> Result<MaskShape> {
             lo_feather: f64_or(p, "loFeather", 0.1),
             hi_feather: f64_or(p, "hiFeather", 0.1),
         },
-        "depthRange" => MaskShape::DepthRange {
-            lo: f64_or(p, "lo", 0.5),
-            hi: f64_or(p, "hi", 1.0),
-            feather: f64_or(p, "feather", 0.1),
-        },
+        "depthRange" => MaskShape::DepthRange { lo: f64_or(p, "lo", 0.5), hi: f64_or(p, "hi", 1.0), feather: f64_or(p, "feather", 0.1) },
         "colorRange" => {
             let samples: Vec<[f64; 3]> = p
                 .get("samples")
@@ -51,7 +47,9 @@ fn shape_from(kind: &str, p: &Value, c: &str) -> Result<MaskShape> {
         other => {
             return Err(bad(
                 c,
-                format!("unknown mask kind `{other}` (brush|linear|radial|sky|subject|background|luminanceRange|colorRange|depthRange|object|prompt)"),
+                format!(
+                    "unknown mask kind `{other}` (brush|linear|radial|sky|subject|background|luminanceRange|colorRange|depthRange|object|prompt)"
+                ),
             ));
         }
     })

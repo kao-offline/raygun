@@ -17,7 +17,7 @@
   <img alt="Desktop Windows macOS Linux" src="https://img.shields.io/badge/desktop-Windows_%C2%B7_macOS_%C2%B7_Linux-8a5800?style=flat-square">
   <img alt="WASM compatible" src="https://img.shields.io/badge/WASM-compatible-8a5800?style=flat-square">
   <img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square">
-  <a href="ROADMAP.md"><img alt="Status: Phase 0 fork" src="https://img.shields.io/badge/status-Phase_0_fork-f2a516?style=flat-square"></a>
+  <a href="ROADMAP.md"><img alt="Status: Phases 1-4 landed" src="https://img.shields.io/badge/status-Phases_1--4_landed-f2a516?style=flat-square"></a>
 </p>
 
 <p align="center">
