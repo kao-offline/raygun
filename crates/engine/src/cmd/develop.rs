@@ -1057,5 +1057,44 @@ pub fn specs() -> Vec<CommandSpec> {
             s.cancel_interaction()?;
             ok()
         }),
+        cmd!(
+            "develop.importRrdata",
+            "Import RapidRAW Adjustments",
+            ["File"],
+            None,
+            "{adjustments: {...RapidRAW .rrdata JSON...}, ids?: [photo]} — maps core tone/color/detail/curves/HSL/grading; reports unmapped keys",
+            has_active,
+            |s, p| {
+                let adj = p.get("adjustments").cloned().ok_or_else(|| bad("develop.importRrdata", "missing `adjustments` object"))?;
+                if !adj.is_object() {
+                    return Err(bad("develop.importRrdata", "`adjustments` must be an object"));
+                }
+                if let Some(ids) = p.get("ids").and_then(Value::as_array) {
+                    let ids: Vec<PhotoId> = ids.iter().filter_map(Value::as_u64).map(PhotoId).collect();
+                    let mut ops = Vec::new();
+                    let mut applied = Vec::new();
+                    let mut unmapped = Vec::new();
+                    for id in ids {
+                        if let Some(d) = s.develop_of(id) {
+                            let mut d = (*d).clone();
+                            let r = crate::rrdata::apply_rrdata(&mut d, &adj);
+                            applied = r.applied;
+                            unmapped = r.unmapped;
+                            if let Some(op) = s.develop_op(id, d, "Import RapidRAW") {
+                                ops.push(op);
+                            }
+                        }
+                    }
+                    s.commit("Import RapidRAW", Op::Batch { ops })?;
+                    return Ok(json!({"applied": applied, "unmapped": unmapped}));
+                }
+                let id = active(s, "develop.importRrdata")?;
+                let mut d = (*s.develop_of(id).unwrap_or_default()).clone();
+                let r = crate::rrdata::apply_rrdata(&mut d, &adj);
+                let out = json!({"applied": r.applied, "unmapped": r.unmapped});
+                s.set_develop(id, d, "Import RapidRAW")?;
+                Ok(out)
+            }
+        ),
     ]
 }
