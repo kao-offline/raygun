@@ -123,5 +123,27 @@ pub fn specs() -> Vec<CommandSpec> {
                 Ok(json!({"path": path}))
             }
         ),
+        cmd!(
+            query "export.estimate",
+            "Estimate Export Size",
+            [],
+            None,
+            "{id?, ...app.export options (preset?, format, quality, longEdge, metadata, removeLocation, ...)} — render the photo in memory exactly as app.export would and report {bytes, width, height, fileName}; writes nothing",
+            always,
+            |s, p| {
+                const ID: &str = "export.estimate";
+                let params = s.export_params(p).map_err(|e| bad(ID, e))?;
+                let o = crate::export::ExportOptions::from_json(&params);
+                crate::export::ExportOptions::validate(ID, &params).map_err(|e| bad(ID, e.to_string()))?;
+                let id = p
+                    .get("id")
+                    .and_then(Value::as_u64)
+                    .map(lightcraft_catalog::PhotoId)
+                    .or(s.active())
+                    .ok_or_else(|| bad(ID, "no photo (give `id` or select one)"))?;
+                let out = crate::export::export_photo(s, id, &o, 1).map_err(|e| bad(ID, e))?;
+                Ok(json!({"bytes": out.bytes.len(), "width": out.width, "height": out.height, "fileName": out.file_name}))
+            }
+        ),
     ]
 }

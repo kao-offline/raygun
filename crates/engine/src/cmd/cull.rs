@@ -137,5 +137,94 @@ pub fn specs() -> Vec<CommandSpec> {
             always,
             analyze
         ),
+        cmd!(
+            "cull.duplicates",
+            "Find Duplicate Photos",
+            [],
+            None,
+            "{ids?, similarity?: 0..1 (0.98), rejectOthers?: bool (false)} — group near-identical photos by content signature (regardless of capture time); optionally reject every group member but its sharpest; one undo step when rejecting → {groups: [[id]], rejected}",
+            always,
+            duplicates
+        ),
     ]
+}
+
+/// Near-duplicate detection: union-find over content signatures (RapidRAW-style
+/// auto-culling). Same-scene bursts minutes apart still group; exact files
+/// group first by content key. Capped at 2000 photos to bound the O(n²) pass.
+fn duplicates(s: &mut Session, p: &Value) -> Result<Value> {
+    use lightcraft_catalog::{Flag, Op};
+    let threshold = p.get("similarity").and_then(Value::as_f64).unwrap_or(0.98) as f32;
+    let threshold = if threshold.is_finite() { threshold.clamp(0.5, 1.0) } else { 0.98 };
+    let reject = p.get("rejectOthers").and_then(Value::as_bool).unwrap_or(false);
+    let mut ids: Vec<PhotoId> = if p.get("ids").is_some() || s.selection.ids.len() > 1 { s.targets(p) } else { s.visible_cloned() };
+    ids.truncate(2000);
+    // signatures (cached by content) + sharpness for the keeper.
+    let mut sigs: Vec<(PhotoId, [f32; 64], f32)> = Vec::new();
+    for id in ids {
+        let key = s.catalog.photo(id).map(|p| crate::media::content_key(p));
+        let sig = key.clone().and_then(|k| s.signatures.get(&k).copied()).or_else(|| {
+            let src = s.source_now(id, crate::media::SourceLevel::Thumb).ok()?;
+            let v = lightcraft_pipeline::cull::signature(&src);
+            if let Some(k) = key.clone() {
+                s.signatures.insert(k, v);
+            }
+            Some(v)
+        });
+        let sharp = s
+            .source_now(id, crate::media::SourceLevel::Thumb)
+            .map(|src| lightcraft_pipeline::cull::sharpness(&src))
+            .unwrap_or(0.0);
+        if let Some(v) = sig {
+            sigs.push((id, v, sharp));
+        }
+    }
+    // union-find
+    let mut parent: Vec<usize> = (0..sigs.len()).collect();
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            let nxt = parent[x];
+            parent[x] = parent[nxt];
+            x = nxt;
+        }
+        x
+    }
+    for i in 0..sigs.len() {
+        for j in (i + 1)..sigs.len() {
+            if lightcraft_pipeline::cull::similarity(&sigs[i].1, &sigs[j].1) >= threshold {
+                let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+                if a != b {
+                    parent[b] = a;
+                }
+            }
+        }
+    }
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = Default::default();
+    for (i, _) in sigs.iter().enumerate() {
+        let r = find(&mut parent, i);
+        groups.entry(r).or_default().push(i);
+    }
+    let mut out: Vec<Vec<u64>> = Vec::new();
+    let mut ops = Vec::new();
+    let mut rejected = 0u32;
+    for (_, members) in groups.into_iter().filter(|(_, m)| m.len() > 1) {
+        // keeper: sharpest
+        let mut order = members;
+        order.sort_by(|&a, &b| sigs[b].2.total_cmp(&sigs[a].2));
+        out.push(order.iter().map(|&i| sigs[i].0.0).collect());
+        if reject {
+            for &i in &order[1..] {
+                let id = sigs[i].0;
+                if s.catalog.photo(id).map(|p| p.flag).unwrap_or_default() != Flag::Reject {
+                    ops.push(Op::SetFlag { id, flag: Flag::Reject });
+                    rejected += 1;
+                }
+            }
+        }
+    }
+    out.sort_by_key(|g| std::cmp::Reverse(g.len()));
+    if !ops.is_empty() {
+        s.commit("Reject Duplicates", Op::Batch { ops })?;
+    }
+    Ok(json!({"groups": out, "rejected": rejected}))
 }

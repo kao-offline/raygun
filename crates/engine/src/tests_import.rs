@@ -1387,3 +1387,67 @@ fn heic_imports_as_a_normal_photo_or_says_why_not() {
     assert!(mean(&brighter.bytes) > mean(&plain.bytes) * 1.3, "exposure +1 brightens the HEIC");
     let _ = std::fs::remove_dir_all(&src);
 }
+
+/// Duplicate culling: two near-identical files group together and
+/// `rejectOthers` rejects all but the sharpest; an unrelated photo stays out.
+#[test]
+fn duplicate_groups_and_rejects() {
+    let src = temp_dir("duplicates");
+    write_png(&src.join("a.png"), 7);
+    // Near-identical twin: same scene, one pixel nudged (different bytes, so the
+    // import keeps both, but the content signature still groups them).
+    {
+        let (w, h) = (48usize, 32usize);
+        let mut data: Vec<[u8; 4]> = (0..w * h).map(|i| [(i % w * 5) as u8, (i / w * 7) as u8, 7, 255]).collect();
+        data[0] = [8, 9, 10, 255];
+        let img = lightcraft_raster::Rgba8 { width: w, height: h, data };
+        let bytes = lightcraft_codecs::encode_png(&lightcraft_codecs::EncodeImage::rgba8(&img), &lightcraft_codecs::EncodeMeta::default()).unwrap();
+        std::fs::write(src.join("a-twin.png"), bytes).unwrap();
+    }
+    // An unrelated photo: a procedural demo scene, clearly different content.
+    {
+        let scene = lightcraft_scenes::demo_library()[7].render(480, 320);
+        let data: Vec<[u8; 4]> = scene
+            .data
+            .iter()
+            .map(|c| {
+                let e = |v: f32| (lightcraft_color::transfer::linear_to_srgb(v.clamp(0.0, 1.0)) * 255.0).round() as u8;
+                [e(c[0]), e(c[1]), e(c[2]), 255]
+            })
+            .collect();
+        let png = lightcraft_codecs::encode_png(
+            &lightcraft_codecs::EncodeImage::rgba8(&lightcraft_raster::Rgba8 { width: scene.width, height: scene.height, data }),
+            &Default::default(),
+        )
+        .unwrap();
+        std::fs::write(src.join("other.png"), png).unwrap();
+    }
+    let mut s = Session::new().with_fs();
+    let r = s.execute("library.import", &json!({"paths": [src.to_string_lossy()]})).unwrap();
+    assert_eq!(ids(&r, "imported"), 3, "{r}");
+    let all: Vec<u64> = s.catalog.photos().map(|p| p.id.0).collect();
+    let r = s.execute("cull.duplicates", &json!({"ids": all})).unwrap();
+    assert_eq!(r["groups"].as_array().map(Vec::len).unwrap_or(0), 1, "{r}");
+    assert_eq!(r["groups"][0].as_array().map(Vec::len).unwrap_or(0), 2, "{r}");
+    let r = s.execute("cull.duplicates", &json!({"rejectOthers": true})).unwrap();
+    assert_eq!(r["rejected"], 1, "{r}");
+    let _ = std::fs::remove_dir_all(&src);
+}
+
+/// Export estimate: renders in memory exactly as app.export would and reports
+/// the byte size without writing a file.
+#[test]
+fn export_estimate_matches_written_bytes() {
+    let src = temp_dir("estimate");
+    write_png(&src.join("a.png"), 3);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [src.to_string_lossy()]})).unwrap();
+    let id = s.catalog.photos().next().unwrap().id;
+    let params = json!({"format": "jpeg", "quality": 80, "longEdge": 64});
+    let r = s.execute("export.estimate", &json!({"id": id.0, "format": "jpeg", "quality": 80, "longEdge": 64})).unwrap();
+    let o = crate::export::ExportOptions::from_json(&params);
+    let written = crate::export::export_photo(&mut s, id, &o, 1).unwrap();
+    assert_eq!(r["bytes"].as_u64().unwrap() as usize, written.bytes.len(), "{r}");
+    assert!(written.bytes.len() > 100, "a real JPEG was encoded");
+    let _ = std::fs::remove_dir_all(&src);
+}
