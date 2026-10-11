@@ -225,7 +225,7 @@ impl Segmenter {
     pub fn mirrors(&self) -> Vec<String> {
         #[cfg(feature = "sam")]
         {
-            let env = std::env::var(lightcraft_segment::fetch::MIRRORS_ENV).ok();
+            let env = std::env::var("RAYGUN_SAM3_MIRRORS").ok().or_else(|| std::env::var(lightcraft_segment::fetch::MIRRORS_ENV).ok());
             lightcraft_segment::fetch::mirrors(env.as_deref(), self.mirrors_file.as_deref())
         }
         #[cfg(not(feature = "sam"))]

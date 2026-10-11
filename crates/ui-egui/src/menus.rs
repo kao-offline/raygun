@@ -168,7 +168,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("file.restoreLibrary", "Restore Library from Backup…", None, "File"),
     ("photo.locate", "Locate Missing File…", None, ""),
     ("dialog.saveMetadataPreset", "Save Metadata Preset…", None, ""),
-    ("app.quit", "Quit LightCraft", Some("Cmd+Q"), "File"),
+    ("app.quit", "Quit Raygun", Some("Cmd+Q"), "File"),
     ("file.importPresets", "Import Profiles & Presets…", None, "File"),
     ("file.exportPresets", "Export Presets…", None, "File"),
     ("file.importKeywords", "Import Keywords…", None, "File"),
@@ -180,17 +180,16 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("app.openLibrary", "Open Library…", None, "File"),
     // Settings ▸ Display
     ("app.displayProfile", "Display Profile", None, ""),
-    ("app.about", "About LightCraft", None, "Help"),
+    ("app.about", "About Raygun", None, "Help"),
     ("app.systemInfo", "System Info…", None, "Help"),
     ("app.openLogFolder", "Open Log Folder", None, "Help"),
     ("app.whatsNew", "What's New", None, "Help"),
     ("dialog.cull", "Assisted Culling…", None, "Photo"),
-    ("app.help", "LightCraft Help", Some("F1"), "Help"),
-    ("app.discord", "Join the ArtCraft Discord…", None, "Help"),
+    ("app.help", "Raygun Help", Some("F1"), "Help"),
+    ("app.checkUpdates", "Check for Updates…", None, "Help"),
     ("app.feedback", "Send Feedback…", None, "Help"),
-    ("app.website", "LightCraft Website", None, "Help"),
-    ("app.github", "LightCraft on GitHub", None, "Help"),
-    ("app.artcraft", "ArtCraft Website", None, "Help"),
+    ("app.website", "Raygun Website", None, "Help"),
+    ("app.github", "Raygun on GitHub", None, "Help"),
     ("app.shortcuts", "Keyboard Shortcuts", Some("Cmd+/"), "Help"),
     ("app.setShortcut", "Set Keyboard Shortcut", None, ""),
     ("app.resetShortcuts", "Reset All Keyboard Shortcuts", None, ""),
@@ -1055,6 +1054,27 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             app.ui.dialog = Some(Dialog::WhatsNew);
             Ok(json!({"text": crate::panels::dialogs::WHATS_NEW}))
         }
+        "app.checkUpdates" => match app.session.execute("update.check", &json!({})).map_err(|e| e.to_string()) {
+            Err(e) if e.contains("unknown command") => {
+                // the web build has no updater: a new site bundle is the update.
+                app.toast(&ctx, "Web updates arrive with the site — nothing to install");
+                Ok(json!({"available": false}))
+            }
+            Err(e) => {
+                app.toast(&ctx, format!("Couldn't check for updates: {e}"));
+                Err(e)
+            }
+            Ok(r) if r.get("available").and_then(Value::as_bool) == Some(true) => {
+                let tag = r.get("latest").and_then(Value::as_str).unwrap_or("?");
+                app.notices.push(format!("Raygun {tag} is available — run update.download, then update.apply to install it without reinstalling."));
+                app.toast(&ctx, format!("Raygun {tag} is available"));
+                Ok(r)
+            }
+            Ok(r) => {
+                app.toast(&ctx, "Raygun is up to date");
+                Ok(r)
+            }
+        },
         "app.systemInfo" => {
             let info = app.session.execute("library.info", &json!({})).unwrap_or_default();
             let gpu = (lightcraft_engine::gpu::ready() && lightcraft_engine::gpu::available()).then(lightcraft_engine::gpu::adapter_name).flatten();
@@ -1488,8 +1508,8 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             let path = match p.get("path").and_then(Value::as_str) {
                 Some(x) => Some(x.to_string()),
                 None => {
-                    let name = format!("{}.lcpreset", group.as_deref().unwrap_or("LightCraft Presets"));
-                    let req = PickRequest::save(crate::i18n::tr("Export Presets"), crate::i18n::tr("LightCraft Preset"), &["lcpreset"], name.clone());
+                    let name = format!("{}.lcpreset", group.as_deref().unwrap_or("Raygun Presets"));
+                    let req = PickRequest::save(crate::i18n::tr("Export Presets"), crate::i18n::tr("Raygun Preset"), &["lcpreset"], name.clone());
                     match crate::pick::ask(app, id, p, "path", req, |s| s.save_preset_file.as_mut().map(|f| f(&name).into_iter().collect())) {
                         Picked::Now(v) => v.into_iter().next(),
                         Picked::Later => return Some(Ok(Value::Null)),
@@ -1575,8 +1595,8 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
         "app.export" => crate::control::export_active(app, p),
         "app.showInFinder" => show_in_finder(app),
         "app.openLogFolder" => open_log_folder(app),
-        "app.discord" | "app.website" | "app.github" | "app.artcraft" | "app.help" | "app.feedback" => {
-            let url = crate::links::url_of(id).unwrap_or(crate::links::WEBSITE);
+        "app.website" | "app.github" | "app.help" | "app.feedback" => {
+            let url = crate::links::url_of(id).unwrap_or(crate::links::GITHUB);
             crate::links::open(app, url)
         }
         "app.exportPrevious" => match app.session.last_export.clone() {

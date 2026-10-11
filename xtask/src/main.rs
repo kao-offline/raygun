@@ -5,6 +5,7 @@
 
 mod assets;
 mod bench;
+mod icns;
 mod ico;
 mod layers;
 mod parity;
@@ -25,6 +26,8 @@ commands:
                   the previous run (default input: corpus/raw/arw-sony-a7m3-compressed.arw)
   ico <out.ico> <in.png>...
                   pack square PNGs (<= 256 px) into a Windows .ico (see packaging/icons.sh)
+  icns <out.icns> <in.png>...
+                  pack square PNGs (128/256/512/1024 px) into a macOS .icns (see packaging/icons.sh)
   layers          enforce the crate dependency layering (plan/architecture.md §3)
   parity [--write]
                   check docs/parity.md (every cmd:/ctl: id and path it cites exists) and print the
@@ -44,6 +47,7 @@ fn main() -> ExitCode {
     let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
     let result = match args.first().map(String::as_str) {
         Some("ico") => ico::run(&rest),
+        Some("icns") => icns::run(&rest),
         Some("version") => version::run(&root(), &rest),
         Some("layers") => cmd_layers(),
         Some("assets") => assets::run(&root()),

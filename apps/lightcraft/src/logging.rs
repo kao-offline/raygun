@@ -2,14 +2,14 @@
 //!
 //! It replaces the stderr-only `StderrLog` that `main.rs` used to install. A launch from a
 //! desktop menu or the Dock has no terminal, so the file is what a bug report can attach:
-//! `<settings folder>/logs/lightcraft.log`, next to `ui.json` (`config_dir` in `main.rs`; Linux
-//! `$XDG_CONFIG_HOME/lightcraft/logs`, by default `~/.config/lightcraft/logs`). Never in the
-//! library folder. Each start moves the previous log to `lightcraft.1.log` (and that one to `.2`),
-//! so the log of a run that crashed survives the next launch. Runs with `LIGHTCRAFT_NO_PREFS`
+//! `<settings folder>/logs/raygun.log`, next to `ui.json` (`config_dir` in `main.rs`; Linux
+//! `\$XDG_CONFIG_HOME/raygun/logs`, by default `~/.config/raygun/logs`). Never in the
+//! library folder. Each start moves the previous log to `raygun.1.log` (and that one to `.2`),
+//! so the log of a run that crashed survives the next launch. Runs with `RAYGUN_NO_PREFS`
 //! (tests, scripts) log to standard error only, so they don't rotate away the user's own logs.
 //!
 //! Levels ([`filter_spec`]): `info` for LightCraft's own crates, `warn` for everything else (wgpu
-//! and naga are chatty). `LIGHTCRAFT_LOG` keeps the meaning it had with the old logger: `info` or
+//! and naga are chatty). `RAYGUN_LOG` (legacy `LIGHTCRAFT_LOG`) keeps the meaning it had with the old logger: `info` or
 //! `debug` lowers LightCraft's own crates to that level, any other value means warnings and errors
 //! only. Without it, `RUST_LOG` replaces the default with env_logger-style directives: `debug`,
 //! `warn,lightcraft_pipeline=trace`, `wgpu_core=info`. A directive ending in `*` matches every
@@ -31,19 +31,19 @@ use std::time::SystemTime;
 use log::LevelFilter;
 
 /// The current log file's name inside the log folder.
-pub const LOG_FILE: &str = "lightcraft.log";
-/// How many previous logs are kept (`lightcraft.1.log` … `lightcraft.<KEEP>.log`).
+pub const LOG_FILE: &str = "raygun.log";
+/// How many previous logs are kept (`raygun.1.log` … `raygun.<KEEP>.log`).
 pub const KEEP: usize = 2;
 /// The log file stops growing past this size (a runaway warning can't fill the disk).
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// Records kept in memory until the log file is attached.
 pub const MAX_PENDING: usize = 512;
-/// The built-in filter when neither `LIGHTCRAFT_LOG` nor `RUST_LOG` says otherwise.
+/// The built-in filter when neither `RAYGUN_LOG` nor `RUST_LOG` says otherwise.
 pub const DEFAULT_FILTER: &str = "warn,lightcraft*=info";
 
-/// The filter directives for this run from `LIGHTCRAFT_LOG` and `RUST_LOG` (blank = unset).
+/// The filter directives for this run from `RAYGUN_LOG` and `RUST_LOG` (blank = unset).
 ///
-/// `LIGHTCRAFT_LOG` wins when set and means what it did for the old stderr logger: `info` or
+/// `RAYGUN_LOG` wins when set and means what it did for the old stderr logger: `info` or
 /// `debug` for LightCraft's own crates (warnings and errors from everything else), any other value
 /// warnings and errors only. Else `RUST_LOG` as env_logger directives, else [`DEFAULT_FILTER`].
 pub fn filter_spec(lightcraft_log: Option<&str>, rust_log: Option<&str>) -> String {
@@ -138,7 +138,7 @@ fn civil_from_days(days: u64) -> (u64, u64, u64) {
 }
 
 fn numbered(dir: &Path, n: usize) -> PathBuf {
-    if n == 0 { dir.join(LOG_FILE) } else { dir.join(format!("lightcraft.{n}.log")) }
+    if n == 0 { dir.join(LOG_FILE) } else { dir.join(format!("raygun.{n}.log")) }
 }
 
 /// Shift the previous logs up one (`.log` → `.1.log` → … → `.<KEEP>.log`, the oldest dropped)
@@ -313,7 +313,8 @@ impl log::Log for AppLogger {
 pub fn install() -> Option<&'static AppLogger> {
     static LOGGER: OnceLock<AppLogger> = OnceLock::new();
     let var = |name| std::env::var(name).ok();
-    let filter = Filter::parse(&filter_spec(var("LIGHTCRAFT_LOG").as_deref(), var("RUST_LOG").as_deref()));
+    let raygun_log = var("RAYGUN_LOG").or_else(|| var("LIGHTCRAFT_LOG"));
+    let filter = Filter::parse(&filter_spec(raygun_log.as_deref(), var("RUST_LOG").as_deref()));
     let max = filter.max();
     let logger = LOGGER.get_or_init(|| AppLogger::new(filter, true));
     log::set_logger(logger).ok()?;
@@ -322,7 +323,7 @@ pub fn install() -> Option<&'static AppLogger> {
 }
 
 /// Chain a panic hook after the current one (the engine guard's: standard error plus
-/// `lightcraft-panics.log` in the temp folder) that also puts the panic in the log file.
+/// `raygun-panics.log` in the temp folder) that also puts the panic in the log file.
 pub fn record_panics(logger: &'static AppLogger) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -505,8 +506,8 @@ mod tests {
             std::fs::write(&path, format!("run {run}")).expect("write");
         }
         assert_eq!(read(&dir.join(LOG_FILE)), "run 4");
-        assert_eq!(read(&dir.join("lightcraft.1.log")), "run 3");
-        assert_eq!(read(&dir.join("lightcraft.2.log")), "run 2");
+        assert_eq!(read(&dir.join("raygun.1.log")), "run 3");
+        assert_eq!(read(&dir.join("raygun.2.log")), "run 2");
         assert!(!dir.join("lightcraft.3.log").exists(), "only {KEEP} old logs are kept");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -610,7 +611,7 @@ mod tests {
         assert!(!logger.enabled(&log::Metadata::builder().level(log::Level::Info).target("naga").build()));
         // Attaching again rotates: the first log becomes `.1`.
         logger.attach_dir(&dir).expect("attach again");
-        assert_eq!(read(&dir.join("lightcraft.1.log")), text);
+        assert_eq!(read(&dir.join("raygun.1.log")), text);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

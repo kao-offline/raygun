@@ -9,8 +9,8 @@
 //! Which backends wgpu may load (DX12 only on Windows; `LIGHTCRAFT_GPU_BACKEND`, `WGPU_BACKEND`) and
 //! the crash sentinel around device creation: [`backend`] (issue #136).
 //!
-//! Use [`render`]: it returns `None` when the GPU is unavailable, disabled (`LIGHTCRAFT_GPU=0`,
-//! `LIGHTCRAFT_GPU_BACKEND=off` or [`set_enabled`]), the render does not fit the device, or the device reported an error, ran out
+//! Use [`render`]: it returns `None` when the GPU is unavailable, disabled (`RAYGUN_GPU=0`,
+//! `RAYGUN_GPU_BACKEND=off` or [`set_enabled`]), the render does not fit the device, or the device reported an error, ran out
 //! of memory or returned an incomplete image — callers then render on the CPU. [`unavailable_reason`]
 //! and [`last_fallback`] say why (`ui.inspect` → `perf.gpuReason` / `perf.gpuFallback`).
 //! The browser build has no GPU path yet (WebGPU device creation is asynchronous): everything here
@@ -68,21 +68,21 @@ fn record_fallback(reason: String) {
 }
 
 /// Why renders do not use the GPU, or `None` when they do (or will, once the device is created).
-/// E.g. "disabled by LIGHTCRAFT_GPU=0", "software adapter (llvmpipe …) skipped", "device lost …".
+/// E.g. "disabled by RAYGUN_GPU=0", "software adapter (llvmpipe …) skipped", "device lost …".
 /// Never blocks.
 pub fn unavailable_reason() -> Option<String> {
     if env_disabled() {
         #[cfg(not(target_arch = "wasm32"))]
         if backend::env_off() {
-            return Some("disabled by LIGHTCRAFT_GPU_BACKEND=off".into());
+            return Some("disabled by RAYGUN_GPU_BACKEND=off".into());
         }
-        return Some("disabled by LIGHTCRAFT_GPU=0".into());
+        return Some("disabled by RAYGUN_GPU=0".into());
     }
     if !ENABLED.load(Ordering::Relaxed) {
         return Some("disabled by the GPU rendering preference (app.gpu)".into());
     }
     if shutting_down() {
-        return Some("LightCraft is closing".into());
+        return Some("Raygun is closing".into());
     }
     if BROKEN.load(Ordering::Relaxed) {
         let r = BROKEN_REASON.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_else(|| "device error".into());
@@ -194,7 +194,7 @@ pub fn wait_idle(timeout: std::time::Duration) -> bool {
 #[cfg(all(feature = "denoise", not(target_arch = "wasm32")))]
 pub(crate) fn switched_off() -> Option<String> {
     if env_disabled() {
-        return Some(if backend::env_off() { "disabled by LIGHTCRAFT_GPU_BACKEND=off" } else { "disabled by LIGHTCRAFT_GPU=0" }.into());
+        return Some(if backend::env_off() { "disabled by RAYGUN_GPU_BACKEND=off" } else { "disabled by RAYGUN_GPU=0" }.into());
     }
     (!ENABLED.load(Ordering::Relaxed)).then(|| "disabled by the GPU rendering preference (app.gpu)".into())
 }
@@ -203,7 +203,8 @@ pub(crate) fn switched_off() -> Option<String> {
 fn env_disabled() -> bool {
     static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *OFF.get_or_init(|| {
-        let off = std::env::var("LIGHTCRAFT_GPU").is_ok_and(|v| matches!(v.trim(), "0" | "off" | "false" | "no"));
+        let off =
+            std::env::var("RAYGUN_GPU").or_else(|_| std::env::var("LIGHTCRAFT_GPU")).is_ok_and(|v| matches!(v.trim(), "0" | "off" | "false" | "no"));
         #[cfg(not(target_arch = "wasm32"))]
         let off = off || backend::env_off();
         off
@@ -225,7 +226,7 @@ pub(crate) fn device() -> Option<&'static ctx::Gpu> {
     // creating the device is a long call into the driver: not once the process is ending
     let _work = exit::enter()?;
     GPU.get_or_init(|| {
-        let Some(backends) = backend::compute_backends() else { return Err("disabled by LIGHTCRAFT_GPU_BACKEND=off".into()) };
+        let Some(backends) = backend::compute_backends() else { return Err("disabled by RAYGUN_GPU_BACKEND=off".into()) };
         backend::with_init_marker(backends, || {
             std::panic::catch_unwind(|| ctx::Gpu::new(backends)).unwrap_or_else(|_| Err("device creation panicked".into()))
         })

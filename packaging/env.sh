@@ -3,7 +3,8 @@
 #
 # Exports:
 #   ROOT                    workspace root
-#   VERSION                 [workspace.package] version from Cargo.toml (override: LIGHTCRAFT_VERSION)
+#   VERSION                 [workspace.package] version from Cargo.toml (override: RAYGUN_VERSION,
+#                           legacy LIGHTCRAFT_VERSION)
 #   DIST                    output directory for release artifacts (default: $ROOT/dist/release)
 #   LIGHTCRAFT_BUILD_SHA    git commit baked into the binaries (see crates/engine/src/build_info.rs)
 #   LIGHTCRAFT_BUILD_DATE   UTC build date, YYYY-MM-DD
@@ -21,7 +22,7 @@ workspace_version() {
   ' "$ROOT/Cargo.toml"
 }
 
-VERSION="${LIGHTCRAFT_VERSION:-$(workspace_version)}"
+VERSION="${RAYGUN_VERSION:-${LIGHTCRAFT_VERSION:-$(workspace_version)}}"
 if [ -z "$VERSION" ]; then
   echo "error: could not read [workspace.package] version from $ROOT/Cargo.toml" >&2
   exit 1

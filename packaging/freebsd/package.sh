@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build and package LightCraft for FreeBSD:
+# Build and package Raygun for FreeBSD:
 #
-#   $DIST/lightcraft-<version>-freebsd-x86_64.tar.gz   a /usr/local-style tree:
-#       lightcraft-<version>-freebsd-x86_64/{bin, share/applications, share/icons, share/mime,
-#       share/metainfo, share/doc/lightcraft}
+#   $DIST/raygun-<version>-freebsd-x86_64.tar.gz   a /usr/local-style tree:
+#       raygun-<version>-freebsd-x86_64/{bin, share/applications, share/icons, share/mime,
+#       share/metainfo, share/doc/raygun}
 #
 # Install by copying the tree's contents into /usr/local:
-#   tar -xzf lightcraft-<version>-freebsd-x86_64.tar.gz --strip-components 1 -C /usr/local
+#   tar -xzf raygun-<version>-freebsd-x86_64.tar.gz --strip-components 1 -C /usr/local
 #
 # Usage: packaging/freebsd/package.sh [--skip-build] [--dry-run]
 #   --dry-run   stage the tree from stub binaries and list it, without building (works on any OS)
@@ -16,7 +16,7 @@ set -euo pipefail
 # shellcheck source=../env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 LINUX="$ROOT/packaging/linux"
-APP_ID=ai.storyteller.lightcraft
+APP_ID=io.github.kao_offline.raygun
 
 SKIP_BUILD=0
 DRY_RUN=0
@@ -40,9 +40,9 @@ if [ "$DRY_RUN" = 0 ] && [ "$(uname -s)" != FreeBSD ]; then
   echo "error: build on FreeBSD (or pass --dry-run to check the tree layout)" >&2
   exit 2
 fi
-BASENAME="lightcraft-$VERSION-freebsd-$ARCH"
+BASENAME="raygun-$VERSION-freebsd-$ARCH"
 
-echo "==> LightCraft $VERSION for FreeBSD $ARCH"
+echo "==> Raygun $VERSION for FreeBSD $ARCH"
 
 # The release VM has 12 GB; full parallelism on the biggest crates runs it out of memory.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
@@ -70,7 +70,7 @@ fi
 # ---- stage a /usr/local-style tree --------------------------------------------------------------
 # FreeBSD's install(1) has no -D: create the directories first.
 mkdir -p "$STAGE/bin" "$STAGE/share/applications" "$STAGE/share/mime/packages" \
-  "$STAGE/share/metainfo" "$STAGE/share/icons" "$STAGE/share/doc/lightcraft"
+  "$STAGE/share/metainfo" "$STAGE/share/icons" "$STAGE/share/doc/raygun"
 install -m 755 "$BIN/lightcraft" "$BIN/lightcraft-cli" "$STAGE/bin/"
 strip "$STAGE/bin/lightcraft" "$STAGE/bin/lightcraft-cli" 2>/dev/null || true
 # The desktop entry, MIME type, metainfo and icons are the freedesktop files Linux ships.
@@ -79,11 +79,11 @@ install -m 644 "$LINUX/$APP_ID.mime.xml" "$STAGE/share/mime/packages/$APP_ID.xml
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$LIGHTCRAFT_BUILD_DATE/g" \
   "$LINUX/$APP_ID.metainfo.xml.in" >"$STAGE/share/metainfo/$APP_ID.metainfo.xml"
 cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/share/icons/"
-copy_docs "$STAGE/share/doc/lightcraft"
+copy_docs "$STAGE/share/doc/raygun"
 
 for f in bin/lightcraft bin/lightcraft-cli "share/applications/$APP_ID.desktop" \
   "share/icons/hicolor/256x256/apps/$APP_ID.png" "share/icons/hicolor/scalable/apps/$APP_ID.svg" \
-  share/doc/lightcraft/LICENSE-MIT share/doc/lightcraft/LICENSE-APACHE; do
+  share/doc/raygun/LICENSE-MIT share/doc/raygun/LICENSE-APACHE; do
   if [ ! -e "$STAGE/$f" ]; then echo "error: $f is missing from the package" >&2; exit 1; fi
 done
 

@@ -318,6 +318,19 @@ fn part_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{name}.part"))
 }
 
+/// The bearer token for `token_env`: the `RAYGUN_` twin first, then the legacy
+/// `LIGHTCRAFT_` name it was configured with.
+fn token_for(name: Option<&str>) -> Option<String> {
+    let name = name?;
+    if let Some(raygun) = name.strip_prefix("LIGHTCRAFT_") {
+        let twin = format!("RAYGUN_{raygun}");
+        if let Ok(t) = std::env::var(&twin) {
+            return Some(t);
+        }
+    }
+    std::env::var(name).ok()
+}
+
 /// Fetch one file from one mirror into `<name>.part` (resuming it when its size is pinned),
 /// check it and move it into place.
 fn fetch_file(f: &FileSpec<'_>, url: &str, dir: &Path, opts: &Options, cancel: &AtomicBool, report: &mut dyn FnMut(u64, u64)) -> Result<(), Fail> {
@@ -345,7 +358,7 @@ fn fetch_file(f: &FileSpec<'_>, url: &str, dir: &Path, opts: &Options, cancel: &
                 headers.push(("Range", format!("bytes={have}-")));
             }
             // a token for the configured host only (never sent on to a redirect's host)
-            if let Some(t) = bearer(opts.token_env.and_then(|name| std::env::var(name).ok()).as_deref(), &url, &origin) {
+            if let Some(t) = bearer(token_for(opts.token_env).as_deref(), &url, &origin) {
                 headers.push(("Authorization", format!("Bearer {t}")));
             }
             let r = http::get(&url, &headers, &limits).map_err(http_fail)?;

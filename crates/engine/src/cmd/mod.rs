@@ -33,6 +33,8 @@ mod preset_files;
 pub mod previews;
 mod query;
 mod sync;
+#[cfg(not(target_arch = "wasm32"))]
+mod update;
 mod xmp;
 
 use serde::Serialize;
@@ -149,6 +151,8 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(browse::specs());
         v.extend(missing::specs());
         v.extend(sync::specs());
+        #[cfg(not(target_arch = "wasm32"))]
+        v.extend(update::specs());
         v.extend(metadata::specs());
         v.extend(filters::specs());
         v.extend(denoise::specs());

@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Build, sign and package LightCraft for Windows.
+  Build, sign and package Raygun for Windows.
 
 .DESCRIPTION
   Produces, in $env:DIST (default: dist/release):
-    lightcraft-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
-    lightcraft-<version>-windows-<arch>-portable.zip   lightcraft.exe + lightcraft-cli.exe
+    raygun-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
+    raygun-<version>-windows-<arch>-portable.zip   lightcraft.exe + lightcraft-cli.exe
 
   The binaries link the C runtime statically (+crt-static), so neither the MSI nor the portable
   zip needs the Visual C++ redistributable. Signing is delegated to sign.ps1 (skipped with a
@@ -58,7 +58,8 @@ function New-PanelBitmap([string] $Path, [int] $Width, [int] $Height, [int] $Spl
 }
 
 # The version lives in one place: [workspace.package] version in the root Cargo.toml.
-$Version = $env:LIGHTCRAFT_VERSION
+$Version = $env:RAYGUN_VERSION
+if (-not $Version) { $Version = $env:LIGHTCRAFT_VERSION }
 if (-not $Version) {
   $inPkg = $false
   foreach ($line in Get-Content (Join-Path $Root 'Cargo.toml')) {
@@ -78,7 +79,7 @@ New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 if (-not $env:LIGHTCRAFT_BUILD_SHA) { $env:LIGHTCRAFT_BUILD_SHA = (git -C $Root rev-parse HEAD 2>$null) }
 if (-not $env:LIGHTCRAFT_BUILD_DATE) { $env:LIGHTCRAFT_BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd') }
 
-Write-Output "LightCraft $Version for Windows $Arch ($Target)"
+Write-Output "Raygun $Version for Windows $Arch ($Target)"
 
 if (-not $SkipBuild) {
   # Static CRT: no VC++ redistributable needed. Scoped to the target so host build scripts and
@@ -131,10 +132,10 @@ $UiBannerBmp = Join-Path $Stage 'ui-banner.bmp'
 New-PanelBitmap $UiDialogBmp 493 312 164 ([byte[]](0x4E, 0x7B, 0xFB)) ([byte[]](0xFF, 0xFF, 0xFF))
 New-PanelBitmap $UiBannerBmp 493 58 0 ([byte[]](0xFF, 0xFF, 0xFF)) ([byte[]](0xFF, 0xFF, 0xFF))
 
-$Msi = Join-Path $Dist "lightcraft-$Version-windows-$Arch.msi"
+$Msi = Join-Path $Dist "raygun-$Version-windows-$Arch.msi"
 Invoke-Native 'wix build' {
-  wix build (Join-Path $PSScriptRoot 'lightcraft.wxs') -arch $Arch -culture en-us @ExtArgs `
-    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'assets\app-icon\lightcraft.ico')" `
+  wix build (Join-Path $PSScriptRoot 'raygun.wxs') -arch $Arch -culture en-us @ExtArgs `
+    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'assets\app-icon\raygun.ico')" `
     -d "UiDialogBmp=$UiDialogBmp" -d "UiBannerBmp=$UiBannerBmp" `
     -o $Msi
 }
@@ -143,7 +144,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Ms
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi
 
 # ---- portable zip ------------------------------------------------------------------------------
-$Portable = Join-Path $TargetDir "windows-package\lightcraft-$Version-windows-$Arch-portable"
+$Portable = Join-Path $TargetDir "windows-package\raygun-$Version-windows-$Arch-portable"
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage '*.exe') $Portable
@@ -157,7 +158,7 @@ if ($env:CRAFT_FONTS_DIR) {
     Copy-Item $_.FullName (Join-Path $Portable "OFL-$($_.Directory.Name).txt")
   }
 }
-$Zip = Join-Path $Dist "lightcraft-$Version-windows-$Arch-portable.zip"
+$Zip = Join-Path $Dist "raygun-$Version-windows-$Arch-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip
 

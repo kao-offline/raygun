@@ -1,6 +1,6 @@
 # Builds nginx serving the Raygun WASM bundle straight from the GitHub release.
 # No files to upload: the release zip is fetched at image build time.
-ARG RAYGUN_VERSION=0.1.0
+ARG RAYGUN_VERSION=0.2.0
 FROM alpine:3.21 AS fetch
 ARG RAYGUN_VERSION
 RUN apk add --no-cache unzip wget && \

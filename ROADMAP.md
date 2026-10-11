@@ -11,6 +11,20 @@
 - **M4:** `cull.duplicates` (signature-based near-duplicate groups + optional reject-others) and `export.estimate` (in-memory render reporting exact bytes, writes nothing).
 - **Next:** M5 WASM verification, PNG white-frame icon export, `lightcraft` → `raygun` binary rename, film/LUT preset packs, BM3D + depth-model follow-ups.
 
+## Raygun rebrand + self-update (M9/M10)
+
+- Full product rebrand: Raygun name/title/about/menus, ray-gun icon set
+  (`assets/app-icon/raygun.*`, hicolor, `.ico` via `xtask ico`, `.icns` via new
+  `xtask icns`), `raygun-*` installer names on every OS, `io.github.kao_offline.raygun`
+  app id (MSI keeps LightCraft's UpgradeCode so it upgrades in place).
+  `RAYGUN_*` env/config paths with `LIGHTCRAFT_*` legacy fallback.
+- New libraries start empty (`--seed-demo` opts back into demo photos).
+- `docs/upstream-sync.md`: `upstream` remote + merge routine + rebrand map, so
+  LightCraft updates keep flowing in.
+- Self-update without reinstalling: `update.check`/`update.download`/`update.apply`
+  commands, Help ▸ Check for Updates…, weekly background check with notice.
+  Windows applies the MSI silently in place.
+
 Milestones toward full Adobe Lightroom parity (cloud Lightroom first, then every Lightroom Classic module), with wall-clock
 estimates for continuous (24/7) agent-driven development with 4–6 parallel agents. Estimates are calibrated on the sibling
 projects (DrawCraft reached its first four milestones in ≈ 4½ h) and are revised as milestones land.

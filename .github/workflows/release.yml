@@ -1,5 +1,5 @@
 # Release pipeline: every push to `release` builds platform artifacts (signed where credentials
-# are configured) and creates or updates the draft GitHub Release "LightCraft v<version>".
+# are configured) and creates or updates the draft GitHub Release "Raygun v<version>".
 # See docs/releasing.md.
 #
 # The signing jobs (macOS, Windows) and the draft-release job run in the `release` environment
@@ -61,7 +61,7 @@ jobs:
             echo "date=$(date -u +%Y-%m-%d)"
             echo "prerelease=$pre"
           } >>"$GITHUB_OUTPUT"
-          echo "### LightCraft v$v (\`${GITHUB_SHA::9}\`)" >>"$GITHUB_STEP_SUMMARY"
+          echo "### Raygun v$v (\`${GITHUB_SHA::9}\`)" >>"$GITHUB_STEP_SUMMARY"
 
   macos:
     name: macOS universal
@@ -69,7 +69,7 @@ jobs:
     runs-on: macos-15  # Raygun: standard runner (the upstream xlarge budget doesn't exist here)
     environment: release
     env:
-      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      RAYGUN_VERSION: ${{ needs.version.outputs.version }}
       LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,7 +87,7 @@ jobs:
           key: release-macos-universal
       - name: Apply version override
         if: inputs.version != ''
-        run: cargo xtask version set "$LIGHTCRAFT_VERSION"
+        run: cargo xtask version set "$RAYGUN_VERSION"
       - name: Import signing certificate
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -127,7 +127,7 @@ jobs:
           # .github/workflows/windows-arm64.yml installs and runs it on ARM64 hardware.
           - { arch: arm64, target: aarch64-pc-windows-msvc }
     env:
-      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      RAYGUN_VERSION: ${{ needs.version.outputs.version }}
       LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -146,7 +146,7 @@ jobs:
       - name: Apply version override
         if: inputs.version != ''
         shell: bash
-        run: cargo xtask version set "$LIGHTCRAFT_VERSION"
+        run: cargo xtask version set "$RAYGUN_VERSION"
       # package.ps1 adds the matching WixToolset.UI/Util.wixext (5.0.2) to the global extension cache.
       - name: Install WiX
         shell: pwsh
@@ -184,7 +184,7 @@ jobs:
           - { arch: x86_64, runner: ubuntu-22.04, deb: amd64 }
           - { arch: aarch64, runner: ubuntu-22.04-arm, deb: arm64 }
     env:
-      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      RAYGUN_VERSION: ${{ needs.version.outputs.version }}
       LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
       NFPM_VERSION: 2.47.0
     steps:
@@ -210,7 +210,7 @@ jobs:
           key: release-linux-${{ matrix.arch }}
       - name: Apply version override
         if: inputs.version != ''
-        run: cargo xtask version set "$LIGHTCRAFT_VERSION"
+        run: cargo xtask version set "$RAYGUN_VERSION"
       - name: Build and package (AppImage, deb, rpm, tar.gz)
         env:
           CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
@@ -221,7 +221,7 @@ jobs:
           dpkg-deb --info dist/release/*.deb
           dpkg-deb --contents dist/release/*.deb | grep -E 'usr/bin/lightcraft$|metainfo|applications'
           ldd target/release/lightcraft
-          python3 -c "import yaml; m = yaml.safe_load(open('packaging/linux/flatpak/ai.storyteller.lightcraft.yml')); assert m['id'] == 'ai.storyteller.lightcraft'"
+          python3 -c "import yaml; m = yaml.safe_load(open('packaging/linux/flatpak/io.github.kao_offline.raygun.yml')); assert m['id'] == 'ai.storyteller.lightcraft'"
           for appimage in dist/release/*.AppImage; do
             chmod +x "$appimage"
             APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --version
@@ -248,7 +248,7 @@ jobs:
           - { arch: x86_64, runner: ubuntu-24.04 }
           - { arch: aarch64, runner: ubuntu-24.04-arm }
     env:
-      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      RAYGUN_VERSION: ${{ needs.version.outputs.version }}
       LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -265,7 +265,7 @@ jobs:
           # Ubuntu 24.04's AppArmor blocks the unprivileged user namespaces bubblewrap needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build the Flatpak bundle
-        run: packaging/linux/flatpak-bundle.sh "dist/linux/lightcraft-$LIGHTCRAFT_VERSION-linux-${{ matrix.arch }}.tar.gz"
+        run: packaging/linux/flatpak-bundle.sh "dist/linux/raygun-$RAYGUN_VERSION-linux-${{ matrix.arch }}.tar.gz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-flatpak-${{ matrix.arch }}
@@ -280,7 +280,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      RAYGUN_VERSION: ${{ needs.version.outputs.version }}
       LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -299,7 +299,7 @@ jobs:
           cpu: 4
           mem: 12288
           # Passed into the VM by name; never templated into the script below.
-          envs: "LIGHTCRAFT_VERSION LIGHTCRAFT_BUILD_DATE LIGHTCRAFT_BUILD_SHA INPUT_VERSION"
+          envs: "RAYGUN_VERSION LIGHTCRAFT_BUILD_DATE LIGHTCRAFT_BUILD_SHA INPUT_VERSION"
           # The FreeBSD CI packages, plus bash for the packaging script.
           prepare: |
             pkg install -y bash git curl pkgconf cmake python3 libxkbcommon wayland libX11 libXcursor libXrandr libXi libxcb mesa-libs vulkan-loader gtk3 fontconfig freetype2 alsa-lib
@@ -311,12 +311,12 @@ jobs:
             # Build outside the checkout so only dist/ is copied back out of the VM (copying the
             # target dir back fails on large builds). 4 jobs: more runs the VM out of memory.
             export CARGO_TARGET_DIR=/var/tmp/lightcraft-target CARGO_BUILD_JOBS=4
-            if [ -n "$INPUT_VERSION" ]; then cargo xtask version set "$LIGHTCRAFT_VERSION"; fi
+            if [ -n "$INPUT_VERSION" ]; then cargo xtask version set "$RAYGUN_VERSION"; fi
             # craft-fonts was checked out next to the sources and synced into the VM with them.
             export CRAFT_FONTS_DIR="$PWD/craft-fonts" CRAFT_FONTS_REQUIRED=1
             bash packaging/freebsd/package.sh
-            tar -tzf dist/release/lightcraft-*-freebsd-x86_64.tar.gz \
-              | grep -E '/bin/lightcraft$|/bin/lightcraft-cli$|/share/applications/ai\.storyteller\.lightcraft\.desktop$|/share/doc/lightcraft/LICENSE-MIT$'
+            tar -tzf dist/release/raygun-*-freebsd-x86_64.tar.gz \
+              | grep -E '/bin/lightcraft$|/bin/lightcraft-cli$|/share/applications/io\.github\.kao_offline\.raygun\.desktop$|/share/doc/raygun/LICENSE-MIT$'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-freebsd-x86_64
@@ -328,7 +328,7 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     env:
-      LIGHTCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      RAYGUN_VERSION: ${{ needs.version.outputs.version }}
       LIGHTCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
       WASM_BINDGEN_VERSION: 0.2.129
     steps:
@@ -354,7 +354,7 @@ jobs:
           wasm-bindgen --version
       - name: Apply version override
         if: inputs.version != ''
-        run: cargo xtask version set "$LIGHTCRAFT_VERSION"
+        run: cargo xtask version set "$RAYGUN_VERSION"
       - name: Build and zip
         env:
           CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
@@ -392,7 +392,7 @@ jobs:
         working-directory: artifacts
         run: |
           tag="v$VERSION"
-          title="LightCraft v$VERSION"
+          title="Raygun v$VERSION"
           pre=()
           if [ "$PRERELEASE" = true ]; then pre=(--prerelease); fi
           if draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then

@@ -71,7 +71,8 @@ pub fn level_from(lightcraft_log: Option<&str>, rust_log: Option<&str>) -> Level
 /// Install the stderr logger at the level the environment asks for. Does nothing when a logger is
 /// already installed.
 pub fn install(prefix: &'static str) {
-    let level = level_from(std::env::var("LIGHTCRAFT_LOG").ok().as_deref(), std::env::var("RUST_LOG").ok().as_deref());
+    let raygun_log = std::env::var("RAYGUN_LOG").ok().or_else(|| std::env::var("LIGHTCRAFT_LOG").ok());
+    let level = level_from(raygun_log.as_deref(), std::env::var("RUST_LOG").ok().as_deref());
     static LOGGER: std::sync::OnceLock<StderrLog> = std::sync::OnceLock::new();
     if log::set_logger(LOGGER.get_or_init(|| StderrLog::new(prefix, level))).is_ok() {
         log::set_max_level(level);

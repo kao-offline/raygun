@@ -71,7 +71,9 @@ pub use crate::config::config_dir;
 
 /// Where camera profiles are read from and written to.
 pub fn dir() -> Option<PathBuf> {
-    std::env::var_os("LIGHTCRAFT_CAMERA_PROFILES").map(PathBuf::from).or_else(|| config_dir().map(|d| d.join("camera-profiles")))
+    crate::config::env_first("RAYGUN_CAMERA_PROFILES", "LIGHTCRAFT_CAMERA_PROFILES")
+        .map(PathBuf::from)
+        .or_else(|| config_dir().map(|d| d.join("camera-profiles")))
 }
 
 /// File name of `model`'s profile: letters, digits, `-` and `_` kept, anything else `_`.

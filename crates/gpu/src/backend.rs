@@ -47,14 +47,14 @@ pub fn parse_backends(s: &str) -> Option<BackendChoice> {
     }
 }
 
-/// The choice from `LIGHTCRAFT_GPU_BACKEND` (`lightcraft`) or else `WGPU_BACKEND` (`wgpu`): the
+/// The choice from `RAYGUN_GPU_BACKEND` (legacy `LIGHTCRAFT_GPU_BACKEND`) or else `WGPU_BACKEND` (`wgpu`): the
 /// first one that parses wins; an unknown value is skipped (with a warning).
 pub fn choose(lightcraft: Option<&str>, wgpu: Option<&str>) -> BackendChoice {
-    for (name, v) in [("LIGHTCRAFT_GPU_BACKEND", lightcraft), ("WGPU_BACKEND", wgpu)] {
+    for (name, v) in [("RAYGUN_GPU_BACKEND", lightcraft), ("WGPU_BACKEND", wgpu)] {
         let Some(v) = v else { continue };
         match parse_backends(v) {
             // WGPU_BACKEND is wgpu's variable: it selects backends, it never turns the GPU off
-            Some(BackendChoice::Off) if name == "WGPU_BACKEND" => log::warn!("gpu: WGPU_BACKEND={v} ignored (use LIGHTCRAFT_GPU_BACKEND=off)"),
+            Some(BackendChoice::Off) if name == "WGPU_BACKEND" => log::warn!("gpu: WGPU_BACKEND={v} ignored (use RAYGUN_GPU_BACKEND=off)"),
             Some(c) => return c,
             None => log::warn!("gpu: {name}={v} names no known backend; ignored"),
         }
@@ -99,7 +99,7 @@ pub fn resolve(choice: BackendChoice, default: Backends, compiled: Backends) -> 
 fn env_choice() -> BackendChoice {
     static C: std::sync::OnceLock<BackendChoice> = std::sync::OnceLock::new();
     *C.get_or_init(|| {
-        let lc = std::env::var("LIGHTCRAFT_GPU_BACKEND").ok();
+        let lc = std::env::var("RAYGUN_GPU_BACKEND").ok().or_else(|| std::env::var("LIGHTCRAFT_GPU_BACKEND").ok());
         let wg = std::env::var("WGPU_BACKEND").ok();
         choose(lc.as_deref(), wg.as_deref())
     })
@@ -145,7 +145,7 @@ pub fn backend_options() -> wgpu::BackendOptions {
     o
 }
 
-/// `LIGHTCRAFT_GPU_BACKEND=off`.
+/// `RAYGUN_GPU_BACKEND=off` (legacy `LIGHTCRAFT_GPU_BACKEND=off`).
 pub(crate) fn env_off() -> bool {
     env_choice() == BackendChoice::Off
 }

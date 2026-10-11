@@ -72,10 +72,10 @@ fn dev() -> Result<&'static Dev, String> {
 }
 
 /// Why nothing runs on the GPU once [`crate::begin_shutdown`] was called.
-const CLOSING: &str = "LightCraft is closing";
+const CLOSING: &str = "Raygun is closing";
 
 fn create_device() -> Result<Dev, String> {
-    let Some(backends) = crate::backend::compute_backends() else { return Err("disabled by LIGHTCRAFT_GPU_BACKEND=off".into()) };
+    let Some(backends) = crate::backend::compute_backends() else { return Err("disabled by RAYGUN_GPU_BACKEND=off".into()) };
     crate::backend::with_init_marker(backends, || {
         std::panic::catch_unwind(|| make_device(backends)).unwrap_or_else(|_| Err("device creation panicked".into()))
     })
@@ -87,7 +87,11 @@ fn make_device(backends: wgpu::Backends) -> Result<Dev, String> {
     // DX12 shaders compile with FXC (issue #471)
     desc.backend_options = crate::backend::backend_options();
     let instance = wgpu::Instance::new(desc);
-    let wanted = std::env::var("LIGHTCRAFT_GPU_ADAPTER").ok().map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let wanted = std::env::var("RAYGUN_GPU_ADAPTER")
+        .or_else(|_| std::env::var("LIGHTCRAFT_GPU_ADAPTER"))
+        .ok()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
     let adapter = match &wanted {
         Some(w) => {
             let all = pollster::block_on(instance.enumerate_adapters(backends));

@@ -2,7 +2,7 @@
 //! last view state and the preview cache.
 //!
 //! ```text
-//! LightCraft Library/
+//! Raygun Library/
 //!   catalog.snap   catalog.log      (lightcraft-catalog journal)
 //!   presets.json   view.json        (user presets + favourites; last source/sort/selection)
 //!   prefs.json     (library preferences: XMP sidecars, import defaults, cache size, last export)
@@ -30,12 +30,13 @@ use serde::{Deserialize, Serialize};
 use crate::{EngineError, LibrarySource, Result, Selection, Session};
 
 /// Library directory name inside the user's Pictures folder.
-pub const DEFAULT_NAME: &str = "LightCraft Library";
+pub const DEFAULT_NAME: &str = "Raygun Library";
 
-/// The default library location: `$LIGHTCRAFT_LIBRARY` if set, else `~/Pictures/LightCraft Library`
-/// (`%USERPROFILE%\Pictures\LightCraft Library` on Windows).
+/// The default library location: `$RAYGUN_LIBRARY` if set (else the legacy
+/// `$LIGHTCRAFT_LIBRARY`), else `~/Pictures/Raygun Library`
+/// (`%USERPROFILE%\Pictures\Raygun Library` on Windows).
 pub fn default_dir() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("LIGHTCRAFT_LIBRARY").filter(|p| !p.is_empty()) {
+    if let Some(p) = crate::config::env_first("RAYGUN_LIBRARY", "LIGHTCRAFT_LIBRARY") {
         return Some(PathBuf::from(p));
     }
     let home = if cfg!(windows) { std::env::var_os("USERPROFILE") } else { std::env::var_os("HOME") }?;

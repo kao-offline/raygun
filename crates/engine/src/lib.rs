@@ -58,6 +58,8 @@ pub mod segment;
 pub mod sidecar;
 pub mod smart;
 pub mod sync;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod update;
 mod view;
 pub mod walk;
 

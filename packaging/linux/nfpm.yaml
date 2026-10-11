@@ -3,7 +3,7 @@
 # exports VERSION and NFPM_ARCH.
 #
 #   nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/release/
-name: lightcraft
+name: raygun
 arch: ${NFPM_ARCH}
 platform: linux
 version: ${VERSION}
@@ -13,9 +13,9 @@ release: 1
 section: graphics
 priority: optional
 maintainer: ${LIGHTCRAFT_MAINTAINER}
-vendor: Learning Machines LLC
-homepage: https://getartcraft.com/apps/lightcraft
-license: MIT OR Apache-2.0
+vendor: kao-offline
+homepage: https://github.com/kao-offline/raygun
+license: AGPL-3.0-or-later
 description: |-
   Open-source, native photo library and raw developer that works the way
   Lightroom users expect. Import, rate, keyword and organise photos; develop

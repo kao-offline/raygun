@@ -44,6 +44,15 @@ cargo xtask ci                                  # fmt, clippy, tests, layers, as
 
 Rust 1.90+ required (repo pins `1.90`; CI/dev machine here runs `1.99.0`).
 
+New libraries start empty. First launch imports your photos: File ▸ Import
+Photos…, or pass folders on the command line. `--seed-demo` fills a fresh
+library with procedural demo photos instead.
+
+Updates install themselves: Help ▸ Check for Updates… (plus a weekly
+background check). On Windows the new MSI applies silently in place —
+settings, library and presets survive. Upstream LightCraft work is merged in
+by maintainers, never installed over you: see [`docs/upstream-sync.md`](docs/upstream-sync.md).
+
 ## Project boards
 
 - Roadmap: [`ROADMAP.md`](ROADMAP.md) — phases, Top Gaps, WASM rules.

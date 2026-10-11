@@ -52,7 +52,7 @@ impl Request {
 }
 
 pub fn configured() -> Option<String> {
-    std::env::var(ENV).ok().filter(|v| !v.trim().is_empty())
+    std::env::var("RAYGUN_SAM3_REMOTE").ok().filter(|v| !v.trim().is_empty()).or_else(|| std::env::var(ENV).ok().filter(|v| !v.trim().is_empty()))
 }
 
 pub fn read_frame(reader: &mut impl Read, limit: usize) -> io::Result<Vec<u8>> {
