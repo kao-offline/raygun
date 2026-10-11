@@ -221,7 +221,7 @@ jobs:
           dpkg-deb --info dist/release/*.deb
           dpkg-deb --contents dist/release/*.deb | grep -E 'usr/bin/lightcraft$|metainfo|applications'
           ldd target/release/lightcraft
-          python3 -c "import yaml; m = yaml.safe_load(open('packaging/linux/flatpak/io.github.kao_offline.raygun.yml')); assert m['id'] == 'ai.storyteller.lightcraft'"
+          python3 -c "import yaml; m = yaml.safe_load(open('packaging/linux/flatpak/io.github.kao_offline.raygun.yml')); assert m['id'] == 'io.github.kao_offline.raygun'"
           for appimage in dist/release/*.AppImage; do
             chmod +x "$appimage"
             APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --version

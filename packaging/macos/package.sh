@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build, sign and (optionally) notarize the macOS release artifacts:
 #
-#   \$DIST/raygun-<version>-macos-<arch>.dmg          Raygun.app on a drag-to-Applications DMG
-#   \$DIST/raygun-cli-<version>-macos-<arch>.zip      the headless CLI
+#   $DIST/raygun-<version>-macos-<arch>.dmg          Raygun.app on a drag-to-Applications DMG
+#   $DIST/raygun-cli-<version>-macos-<arch>.zip      the headless CLI
 #
 # Usage: packaging/macos/package.sh [--arch universal|aarch64|x86_64] [--skip-build]
 #
@@ -40,8 +40,8 @@ IDENTITY="${MACOS_SIGN_IDENTITY:--}"
 SHORT_VERSION="${VERSION%%-*}"
 WORK="$CARGO_TARGET_DIR/macos-package"
 APP="$WORK/Raygun.app"
-DMG="\$DIST/raygun-$VERSION-macos-$ARCH.dmg"
-CLI_ZIP="\$DIST/raygun-cli-$VERSION-macos-$ARCH.zip"
+DMG="$DIST/raygun-$VERSION-macos-$ARCH.dmg"
+CLI_ZIP="$DIST/raygun-cli-$VERSION-macos-$ARCH.zip"
 
 NOTARIZE=0
 if [ "$IDENTITY" = "-" ]; then
