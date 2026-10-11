@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Repackage a LightCraft Linux tarball as a single-file Flatpak bundle:
+# Repackage a Raygun Linux tarball as a single-file Flatpak bundle:
 #
-#   $DIST/lightcraft-<version>-linux-<arch>.flatpak
+#   $DIST/raygun-<version>-linux-<arch>.flatpak
 #
 # Usage: packaging/linux/flatpak-bundle.sh [--no-test] [TARBALL]
 #
-# TARBALL defaults to $DIST/lightcraft-<version>-linux-<arch>.tar.gz from package.sh. The bundle
+# TARBALL defaults to $DIST/raygun-<version>-linux-<arch>.tar.gz from package.sh. The bundle
 # is built for the host architecture (x86_64 or aarch64), which must match the tarball's.
 # Needs flatpak, flatpak-builder and the SVG pixbuf loader (librsvg2-common) for the host's
 # `appstreamcli compose`; the freedesktop runtime and SDK named in the manifest are
 # installed per-user from Flathub. Unless --no-test, the bundle is then installed per-user and
 # `lightcraft-cli --version` is run inside the sandbox as a smoke test.
-# Manifest: packaging/linux/flatpak/ai.storyteller.lightcraft.bundle.yml.
+# Manifest: packaging/linux/flatpak/io.github.kao_offline.raygun.bundle.yml.
 set -euo pipefail
 # shellcheck source=../env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 HERE="$ROOT/packaging/linux"
-APP_ID=ai.storyteller.lightcraft
+APP_ID=io.github.kao_offline.raygun
 FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
 
 TEST=1
@@ -36,14 +36,14 @@ case "$ARCH" in
   aarch64 | arm64) ARCH=aarch64 ;;
   *) echo "unsupported architecture $ARCH" >&2; exit 2 ;;
 esac
-BASENAME="lightcraft-$VERSION-linux-$ARCH"
+BASENAME="raygun-$VERSION-linux-$ARCH"
 TARBALL="${TARBALL:-$DIST/$BASENAME.tar.gz}"
 [ -f "$TARBALL" ] || { echo "error: $TARBALL not found (run packaging/linux/package.sh --formats tar first)" >&2; exit 1; }
 for tool in flatpak flatpak-builder; do
   command -v "$tool" >/dev/null || { echo "error: $tool not found (apt install flatpak flatpak-builder librsvg2-common)" >&2; exit 1; }
 done
 
-echo "==> LightCraft $VERSION Flatpak bundle for $ARCH from $(basename "$TARBALL")"
+echo "==> Raygun $VERSION Flatpak bundle for $ARCH from $(basename "$TARBALL")"
 
 WORK="$CARGO_TARGET_DIR/flatpak-bundle"
 rm -rf "$WORK"
