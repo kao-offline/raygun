@@ -19,7 +19,7 @@ git fetch upstream
      take upstream, then re-apply the Raygun rebrand map below.
    - **Raygun-owned files** (never take upstream's): everything listed under
      *Raygun-owned* below, plus `crates/engine/src/rrdata.rs`,
-     `crates/engine/src/update.rs`, `crates/engine/src/cmd/update.rs`,
+     `crates/engine/src/update.rs`, `crates/engine/src/cmd/update.rs`, `crates/ui-egui/src/panels/updates.rs`,
      `xtask/src/icns.rs`, `hosting/`, `docs/upstream-sync.md`.
    - **Locales** (`crates/ui-egui/locales/*.json`): take upstream's new keys,
      then re-run the brand swap (`LightCraft` → `Raygun`) on changed lines only.
@@ -59,9 +59,18 @@ re-branded before commit:
 
 - `update.check` (Help ▸ Check for Updates…, plus a weekly background check)
   compares this build against `github.com/kao-offline/raygun/releases/latest`.
-- `update.download` fetches this OS's installer into `<config>/updates`.
+- `update.download` selects the running app's OS and CPU architecture, verifies the GitHub asset SHA-256 digest, and records the download in `<config>/updates`.
 - `update.apply` runs the downloaded MSI silently in place on Windows
-  (same UpgradeCode: settings, library and presets survive). Other OSs:
-  download + open the file.
+  after the calling app exits (Raygun UpgradeCode: existing library files are untouched).
+  Help > Check for Updates offers Download Update, then Restart and Install Update.
+  The app saves first and asks about unfinished tasks or unsaved work. Windows may
+  request administrator approval. The installer cannot reboot the computer; it
+  records the actual exit code in `install-status.txt` and logs in `install.log`.
+  `update.apply` returns `scheduled`, not a claim that installation succeeded.
+  macOS/Linux currently download only; use the release package manually.
 - Upstream LightCraft releases are **not** installed by the updater: it only
   follows Raygun releases, which is what makes merged upstream work safe to ship.
+- Keep Raygun's `UpdatePoll` in `apps/lightcraft/src/main.rs` when integrating
+  upstream changes: it delivers fresh check results directly to the update UI.
+
+Windows 0.2.1 establishes a separate Raygun installation. Earlier packages shared LightCraft's MSI identity and cannot be distinguished reliably from stock LightCraft. They are not automatically removed; future Raygun packages upgrade only the new Raygun identity. Existing library folders remain usable.

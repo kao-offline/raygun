@@ -59,6 +59,7 @@ copy_docs() {
 # their OFL licences go with the package as OFL-<family-dir>.txt. Nothing to do without it.
 copy_font_licences() {
   local dest="$1" lic family
+  cp "$ROOT/assets/fonts/OFL-Inter.txt" "$dest/OFL-Inter.txt"
   [ -n "${CRAFT_FONTS_DIR:-}" ] || return 0
   for lic in "$CRAFT_FONTS_DIR"/fonts/*/OFL.txt; do
     [ -f "$lic" ] || continue

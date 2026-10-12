@@ -1,0 +1,12 @@
+{
+  "name": "raygun-web",
+  "account_id": "1301c6d21f502cc4cbd592b0028651a3",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "raygun.kaooffline.top/*", "zone_name": "kaooffline.top" }
+  ],
+  "assets": {
+    "directory": "../dist/web"
+  }
+}

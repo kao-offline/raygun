@@ -233,6 +233,8 @@ pub struct LightcraftApp {
     pub headless_host: bool,
     /// Warnings to show one at a time (damaged settings files…, issue #103).
     pub notices: Vec<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) updates: panels::updates::Shared,
     /// Quitting was stopped to ask first: changes couldn't be saved, or tasks are running.
     pub quit_prompt: Option<QuitPrompt>,
     /// Quit Anyway was chosen: the window may close with unsaved changes.
@@ -259,6 +261,7 @@ pub struct LightcraftApp {
     /// Browser font loaded separately from WASM so the module stays below its host's size limit.
     chinese_font: Option<std::sync::Arc<egui::FontData>>,
     fonts_ready: bool,
+    fonts_dirty: bool,
     last_time: f64,
     /// Rect of the photo canvas and the displayed image (screen points) from the last frame.
     pub canvas_rect: Option<egui::Rect>,
@@ -343,6 +346,8 @@ impl LightcraftApp {
             recording_shortcut: None,
             headless_host: false,
             notices: vec![],
+            #[cfg(not(target_arch = "wasm32"))]
+            updates: Default::default(),
             quit_prompt: None,
             quit_confirmed: false,
             control_rx: None,
@@ -358,6 +363,7 @@ impl LightcraftApp {
             font_language: i18n::Locale::En,
             chinese_font: None,
             fonts_ready: false,
+            fonts_dirty: false,
             last_time: 0.0,
             canvas_rect: None,
             image_rect: None,
@@ -394,12 +400,27 @@ impl LightcraftApp {
         }
     }
 
-    /// Supply the browser's separately downloaded Simplified Chinese font before the first frame.
+    /// Supply the browser's separately downloaded Simplified Chinese font.
     pub fn with_chinese_font(mut self, bytes: Vec<u8>) -> Self {
-        if !bytes.is_empty() {
-            self.chinese_font = Some(std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+        if let Err(error) = self.set_chinese_font(bytes) {
+            log::warn!("{error}");
         }
         self
+    }
+
+    /// Activate a downloaded fallback without rerunning app setup or waiting to show the UI.
+    pub fn set_chinese_font(&mut self, bytes: Vec<u8>) -> Result<(), String> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        if bytes.len() > 32 * 1024 * 1024 {
+            return Err("Chinese font exceeds the 32 MB limit".into());
+        }
+        ab_glyph::FontRef::try_from_slice(&bytes).map_err(|e| format!("Invalid Chinese font: {e}"))?;
+        self.chinese_font = Some(std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+        self.fonts_dirty = true;
+        self.fonts_ready = false;
+        Ok(())
     }
 
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
@@ -791,11 +812,13 @@ impl LightcraftApp {
             self.session.media.availability.run_in_background(std::sync::Arc::new(move || repaint.request_repaint()));
             self.styled = true;
             self.font_language = self.ui.language;
-        } else if self.font_language != self.ui.language {
+            self.fonts_dirty = false;
+        } else if self.font_language != self.ui.language || self.fonts_dirty {
             // Shared Han characters take the active language's forms (Japanese faces for 日本語,
             // the Simplified Chinese face for 简体中文): rebuild the fallback order.
             theme::install_fonts_with_chinese(ctx, self.chinese_font.as_ref());
             self.font_language = self.ui.language;
+            self.fonts_dirty = false;
         } else {
             self.fonts_ready = true;
         }
@@ -1616,3 +1639,31 @@ mod cache_tests {
 
 #[cfg(test)]
 mod tests_model_setup;
+
+#[cfg(test)]
+mod deferred_font_tests {
+    use super::*;
+
+    #[test]
+    fn late_font_updates_an_already_started_app_and_rejects_corrupt_input() {
+        let app = LightcraftApp::new(lightcraft_engine::Session::new(), Services::default());
+        let mut h = headless::Headless::new(app, [800.0, 600.0], 1.0);
+        h.step();
+        h.step();
+        h.step();
+        assert!(h.app.fonts_ready);
+        assert!(h.app.set_chinese_font(b"invalid font".to_vec()).is_err());
+        assert!(h.app.chinese_font.is_none());
+        assert!(h.app.fonts_ready);
+        let font = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
+        h.app.set_chinese_font(font.to_vec()).unwrap();
+        assert!(!h.app.fonts_ready);
+        assert!(h.app.styled);
+        h.step();
+        h.step();
+        h.step();
+        assert!(h.app.fonts_ready);
+        assert!(!h.app.fonts_dirty);
+        assert!(h.app.chinese_font.is_some());
+    }
+}

@@ -27,6 +27,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+& (Join-Path $PSScriptRoot 'check-identity.ps1')
 
 function Invoke-Native([string] $What, [scriptblock] $Block) {
   Write-Output "==> $What"
@@ -109,10 +110,27 @@ foreach ($check in @(@('lightcraft.exe', 2), @('lightcraft-cli.exe', 3))) {
   if ($h.Subsystem -ne $check[1]) { throw "$($check[0]) has PE subsystem $($h.Subsystem), expected $($check[1])" }
   Write-Output "ok $($check[0]): $Arch, PE subsystem $($h.Subsystem)"
 }
+function Clear-PackageFolder([string]$Path) {
+  $packageRoot = [IO.Path]::GetFullPath((Join-Path $TargetDir 'windows-package')) + [IO.Path]::DirectorySeparatorChar
+  $resolved = [IO.Path]::GetFullPath($Path)
+  if (-not $resolved.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Package cleanup escaped its build directory: $resolved"
+  }
+  if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
+}
 $Stage = Join-Path $TargetDir "windows-package\$Arch"
-Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
+Clear-PackageFolder $Stage
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin 'lightcraft.exe'), (Join-Path $Bin 'lightcraft-cli.exe') $Stage
+foreach ($file in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
+  Copy-Item -LiteralPath (Join-Path $Root $file) -Destination $Stage
+}
+Copy-Item -LiteralPath (Join-Path $Root 'assets/fonts/OFL-Inter.txt') -Destination $Stage
+if ($env:CRAFT_FONTS_DIR) {
+  Get-ChildItem -Path (Join-Path $env:CRAFT_FONTS_DIR 'fonts/*/OFL.txt') | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $Stage "OFL-$($_.Directory.Name).txt")
+  }
+}
 
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'lightcraft.exe') (Join-Path $Stage 'lightcraft-cli.exe')
 
@@ -142,22 +160,18 @@ Invoke-Native 'wix build' {
 # wix writes its debug symbols (.wixpdb) next to the MSI; keep them out of the release assets.
 Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Msi, '.wixpdb'))
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi
+& (Join-Path $PSScriptRoot 'check-msi.ps1') -Path $Msi
 
 # ---- portable zip ------------------------------------------------------------------------------
 $Portable = Join-Path $TargetDir "windows-package\raygun-$Version-windows-$Arch-portable"
-Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
+Clear-PackageFolder $Portable
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage '*.exe') $Portable
 foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
 }
-# Builds made with CRAFT_FONTS_DIR (storytold/craft-fonts) embed its fonts: ship their OFL licences.
-if ($env:CRAFT_FONTS_DIR) {
-  Get-ChildItem -Path (Join-Path $env:CRAFT_FONTS_DIR 'fonts\*\OFL.txt') -ErrorAction SilentlyContinue | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $Portable "OFL-$($_.Directory.Name).txt")
-  }
-}
+Copy-Item -Path (Join-Path $Stage 'OFL-*.txt') -Destination $Portable
 $Zip = Join-Path $Dist "raygun-$Version-windows-$Arch-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip

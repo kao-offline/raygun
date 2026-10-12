@@ -35,6 +35,10 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color
       - name: shellcheck
         run: shellcheck packaging/*.sh packaging/*/*.sh
+      - name: Web package regression
+        run: python3 packaging/web/test_package.py
+      - name: Bounded font download
+        run: node packaging/web/test-font-loader.mjs
       - name: PowerShell
         shell: pwsh
         run: |

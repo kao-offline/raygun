@@ -26,31 +26,39 @@
 
 ## What this is
 
-Raygun merges two proven open-source bases:
+Raygun builds on LightCraft and uses RapidRAW as a feature reference:
 
 - **LightCraft** (`https://github.com/storytold/lightcraft`) — pure-Rust library, develop pipeline, GPU `wgpu` CPU-exact rendering, command registry, MCP/CLI/control channel. Its `crates/ui-egui` is reused verbatim.
 - **RapidRAW** (`https://github.com/CyberTimon/RapidRAW`) — feature reference for tone science, masking/AI workflow, film/LUT handling, culling/library polish. Ported as modes of existing Raygun tools, not separate panels. No direct code copy until each dependency license (`rawler`, `lensfun`, `ort`, models) is cleared in `AGENTS.md`.
 
 License: **AGPL-3.0-or-later** (see `LICENSE`). Upstream MIT/Apache notices retained in `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE`.
 
+Implemented Raygun additions include RapidRAW `.rrdata` adjustment import,
+AgX-style/ACES-style tone shoulders, depth-range masks (with a focus fallback
+when no depth matte exists), duplicate groups and export-size estimation.
+The RapidRAW decoder and complete AI stack have not been ported.
+
+Web app: [raygun.kaooffline.top](https://raygun.kaooffline.top).
+The existing Cloudflare deployment is documented in [hosting/README.md](hosting/README.md).
+
 ## Quick start
 
 ```sh
-cargo run --release -p lightcraft -- --memory   # throwaway demo session (binary rename to raygun lands in Phase 1)
+cargo run --release -p lightcraft -- --memory   # throwaway demo session
 cargo run --release -p lightcraft -- ~/Pictures/trip
 cargo run --release -p lightcraft -- --control 7980
 cargo xtask ci                                  # fmt, clippy, tests, layers, assets, wasm
 ```
 
-Rust 1.90+ required (repo pins `1.90`; CI/dev machine here runs `1.99.0`).
+Rust 1.90+ required; CI uses stable Rust.
 
 New libraries start empty. First launch imports your photos: File ▸ Import
 Photos…, or pass folders on the command line. `--seed-demo` fills a fresh
 library with procedural demo photos instead.
 
-Updates install themselves: Help ▸ Check for Updates… (plus a weekly
-background check). On Windows the new MSI applies silently in place —
-settings, library and presets survive. Upstream LightCraft work is merged in
+On Windows, use Help ▸ Check for Updates… (plus a weekly
+background check), then Download Update and Restart and Install Update. The MSI upgrades in place —
+existing library files are kept. Administrator approval may be required. macOS/Linux currently download only. Upstream LightCraft work is merged in
 by maintainers, never installed over you: see [`docs/upstream-sync.md`](docs/upstream-sync.md).
 
 ## Project boards
@@ -61,7 +69,7 @@ by maintainers, never installed over you: see [`docs/upstream-sync.md`](docs/ups
 
 ## Repo map
 
-`geom`, `color`, `raster`, `tiff` → `raw`, `codecs`, `meta`, `develop` → `pipeline` → `catalog` → `engine` → `ui-egui`, `mcp` → apps `lightcraft` (to be renamed `raygun`), `lightcraft-cli`, `lightcraft-web`.
+`geom`, `color`, `raster`, `tiff` → `raw`, `codecs`, `meta`, `develop` → `pipeline` → `catalog` → `engine` → `ui-egui`, `mcp` → apps `lightcraft` (internal compatibility name), `lightcraft-cli`, `lightcraft-web`.
 
 ## Branding
 

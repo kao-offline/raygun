@@ -1,9 +1,10 @@
-# Releasing LightCraft
+# Releasing Raygun
 
 The release pipeline is [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 It runs on every push to the `release` branch. A maintainer can also dispatch it manually, with
-an optional version override such as `1.2.0-rc.1`; the release environment's branch restrictions
-still apply.
+an optional version override such as `1.2.0-rc.1`. Raygun's release environment
+currently has no branch restrictions, so a dispatched feature-branch run can
+produce a draft release for that exact commit without merging its PR.
 
 ## Prepare and start a release
 
@@ -12,9 +13,9 @@ still apply.
    For a manual workflow run, the version input can override the workspace version for that run.
    Use a semantic version such as `1.2.0` or `1.2.0-rc.1`; versions containing a hyphen are
    marked as prereleases.
-3. Push to `release`, or dispatch the workflow on `release` (a dispatch on another branch is a dry run; see below).
+3. Push to `release`, or dispatch the workflow on the reviewed feature branch.
 4. Check the workflow run and its artifacts. On success, the workflow creates or updates a **draft**
-   GitHub Release named `LightCraft v<version>`, targeted at the commit that triggered the run.
+   GitHub Release named `Raygun v<version>`, targeted at the commit that triggered the run.
    Review the draft and its `SHA256SUMS.txt`, then publish it in GitHub Releases when ready.
 
 The workflow replaces assets when it updates an existing draft. It stops rather than overwriting a
@@ -30,22 +31,23 @@ and the WASM web app. The platform scripts in [`packaging/`](../packaging/) writ
 - Windows: MSI installer and portable ZIP for each architecture.
 - Linux: AppImage (with its `.AppImage.zsync`), `.deb`, `.rpm`, and `.tar.gz` for each
   architecture (`packaging/linux/package.sh`). Each AppImage embeds
-  `gh-releases-zsync|storytold|lightcraft|latest|lightcraft-*-linux-<arch>.AppImage.zsync`, so
+  `gh-releases-zsync|kao-offline|raygun|latest|raygun-*-linux-<arch>.AppImage.zsync`, so
   AppImageUpdate fetches only the changed blocks from the latest published (non-pre-) release.
 - Flatpak: a single-file `.flatpak` bundle for each architecture, repackaged from that
   architecture's Linux tarball (`packaging/linux/flatpak-bundle.sh` with
-  `packaging/linux/flatpak/ai.storyteller.lightcraft.bundle.yml`; no Rust build). The from-source
-  manifest `ai.storyteller.lightcraft.yml` is for Flathub; packaging-lint keeps their runtime and
+  `packaging/linux/flatpak/io.github.kao_offline.raygun.bundle.yml`; no Rust build). The from-source
+  manifest `io.github.kao_offline.raygun.yml` is for Flathub; packaging-lint keeps their runtime and
   `finish-args` identical.
-- FreeBSD: `lightcraft-<version>-freebsd-x86_64.tar.gz`, a `/usr/local`-style tree built in a
+- FreeBSD: `raygun-<version>-freebsd-x86_64.tar.gz`, a `/usr/local`-style tree built in a
   FreeBSD 14.3 VM (`packaging/freebsd/package.sh`, the same packages as `freebsd.yml`). Install
   with `tar -xzf <file> --strip-components 1 -C /usr/local`.
-- Web: `lightcraft-web-<version>.zip`.
+- Web: `raygun-web-<version>.zip`.
 
-Only the macOS, Windows and draft-release jobs use the `release` environment. The others sign
-nothing, so dispatching the workflow on a branch (`gh workflow run release.yml --ref <branch>`)
-dry-runs them: the signing jobs are refused by the environment's branch rule, and the release job,
-which needs them, is skipped.
+Only the macOS, Windows and draft-release jobs use the `release` environment.
+A feature-branch dispatch currently builds all targets and creates a draft;
+publish it only after validation and artifact verification. If branch restrictions
+are later enabled, dispatch on an allowed branch instead. Never change those
+restrictions to bypass a release gate.
 
 The Linux builds run on Ubuntu 22.04 and target glibc 2.35 or newer. AppImages and binaries may
 also require system libraries for the windowing stack; the `.deb` and `.rpm` packages declare

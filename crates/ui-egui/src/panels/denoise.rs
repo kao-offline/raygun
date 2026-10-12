@@ -621,8 +621,7 @@ pub fn model_dialog(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, info
         ui.label(RichText::new(tr("This file cannot be used yet")).font(t.semibold(13.5)).color(t.caution));
         ui.add(
             egui::Label::new(
-                RichText::new(sentence(tr(info["reason"].as_str().unwrap_or("It is not a denoise model LightCraft understands"))))
-                    .color(t.text_label),
+                RichText::new(sentence(tr(info["reason"].as_str().unwrap_or("It is not a denoise model Raygun understands")))).color(t.text_label),
             )
             .wrap(),
         );

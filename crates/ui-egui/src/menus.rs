@@ -187,6 +187,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("dialog.cull", "Assisted Culling…", None, "Photo"),
     ("app.help", "Raygun Help", Some("F1"), "Help"),
     ("app.checkUpdates", "Check for Updates…", None, "Help"),
+    ("app.downloadUpdate", "Download Update", None, ""),
     ("app.feedback", "Send Feedback…", None, "Help"),
     ("app.website", "Raygun Website", None, "Help"),
     ("app.github", "Raygun on GitHub", None, "Help"),
@@ -1054,27 +1055,8 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             app.ui.dialog = Some(Dialog::WhatsNew);
             Ok(json!({"text": crate::panels::dialogs::WHATS_NEW}))
         }
-        "app.checkUpdates" => match app.session.execute("update.check", &json!({})).map_err(|e| e.to_string()) {
-            Err(e) if e.contains("unknown command") => {
-                // the web build has no updater: a new site bundle is the update.
-                app.toast(&ctx, "Web updates arrive with the site — nothing to install");
-                Ok(json!({"available": false}))
-            }
-            Err(e) => {
-                app.toast(&ctx, format!("Couldn't check for updates: {e}"));
-                Err(e)
-            }
-            Ok(r) if r.get("available").and_then(Value::as_bool) == Some(true) => {
-                let tag = r.get("latest").and_then(Value::as_str).unwrap_or("?");
-                app.notices.push(format!("Raygun {tag} is available — run update.download, then update.apply to install it without reinstalling."));
-                app.toast(&ctx, format!("Raygun {tag} is available"));
-                Ok(r)
-            }
-            Ok(r) => {
-                app.toast(&ctx, "Raygun is up to date");
-                Ok(r)
-            }
-        },
+        "app.checkUpdates" => crate::panels::updates::check(app, &ctx),
+        "app.downloadUpdate" => crate::panels::updates::download(app, &ctx),
         "app.systemInfo" => {
             let info = app.session.execute("library.info", &json!({})).unwrap_or_default();
             let gpu = (lightcraft_engine::gpu::ready() && lightcraft_engine::gpu::available()).then(lightcraft_engine::gpu::adapter_name).flatten();

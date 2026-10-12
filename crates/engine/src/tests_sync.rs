@@ -32,7 +32,7 @@ impl Scratch {
         Scratch(dir)
     }
     fn path(&self, rel: &str) -> String {
-        self.0.join(rel).to_string_lossy().to_string()
+        self.0.join(rel).components().collect::<PathBuf>().to_string_lossy().to_string()
     }
 }
 

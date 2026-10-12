@@ -645,6 +645,7 @@ pub enum Dialog {
     },
     /// Help ▸ What's New.
     WhatsNew,
+    Updates,
     /// Photo ▸ Assisted Culling: reject photos below this focus score (0 = none), pick the best
     /// of each burst.
     Cull {

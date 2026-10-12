@@ -3,11 +3,11 @@ resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 rust-version = "1.90"
-repository = "https://github.com/hrdyk/raygun"
+repository = "https://github.com/kao-offline/raygun"
 
 [workspace.dependencies]
 # internal

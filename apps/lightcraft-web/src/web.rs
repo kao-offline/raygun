@@ -67,6 +67,7 @@ pub(crate) fn request_repaint() {
 /// URL options (`?bench&store=idb&workers=2&reset`).
 struct Options {
     bench: bool,
+    demo: bool,
     /// "opfs" (default: OPFS, falling back to IndexedDB), "idb" or "memory".
     store: String,
     workers: Option<usize>,
@@ -86,10 +87,13 @@ impl Options {
             })
             .collect();
         let get = |k: &str| params.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+        let bench = get("bench").is_some();
         Options {
-            bench: get("bench").is_some(),
-            store: get("store").filter(|s| s == "idb" || s == "memory").unwrap_or_else(|| "opfs".into()),
-            workers: get("workers").and_then(|v| v.parse().ok()),
+            bench,
+            demo: bench || get("demo").is_some(),
+            // Benchmark edits must never touch a user's persistent photo library.
+            store: if bench { "memory".into() } else { get("store").filter(|s| s == "idb" || s == "memory").unwrap_or_else(|| "opfs".into()) },
+            workers: get("workers").and_then(|v| v.parse::<usize>().ok()).map(|n| n.min(4)),
             reset: get("reset").is_some(),
         }
     }
@@ -295,7 +299,7 @@ async fn boot(opts: Options) -> Boot {
         if opts.reset {
             // everything this site keeps in the browser, photos included: never without asking
             let ok = safety::confirm(
-                "?reset deletes the LightCraft library stored in this browser, including every imported photo. \
+                "?reset deletes the Raygun library stored in this browser, including every imported photo. \
                  This can't be undone. Delete it?",
             );
             if ok {
@@ -327,7 +331,7 @@ async fn boot(opts: Options) -> Boot {
         crate::backend::request_persistence(|granted| {
             if !granted {
                 notice(
-                    "This browser may delete LightCraft's library when it runs short of space (persistent storage wasn't granted). \
+                    "This browser may delete Raygun's library when it runs short of space (persistent storage wasn't granted). \
                      Keep your original photos elsewhere and use File ▸ Back Up Library… now and then.",
                 );
             }
@@ -394,7 +398,7 @@ impl WebApp {
             on_disk: false,
         };
         let mut problem = None;
-        match session.open_library_in(stores, true).cloned() {
+        match session.open_library_in(stores, opts.demo).cloned() {
             Ok(r) => log::info!(
                 "lightcraft: library {} in {:.0} ms ({} photos; snapshot seq {}, {} ops replayed)",
                 if r.created { "created" } else { "loaded" },
@@ -419,7 +423,7 @@ impl WebApp {
         }
         if backend.is_some() {
             notice(
-                "LightCraft in the browser is experimental. Your library is kept in this browser's storage: keep your original photos \
+                "Raygun in the browser is experimental. Your library is kept in this browser's storage: keep your original photos \
                  elsewhere and back up with File ▸ Back Up Library….",
             );
         }
@@ -571,6 +575,20 @@ thread_local! {
     /// Commands from JavaScript ([`command`]), run on the next frame.
     static INBOX: std::cell::RefCell<Vec<(String, String, Reply)>> = const { std::cell::RefCell::new(Vec::new()) };
     static CTX: std::cell::RefCell<Option<egui::Context>> = const { std::cell::RefCell::new(None) };
+    static FONT_INBOX: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The optional Chinese fallback can arrive after startup, including before the app is ready.
+#[wasm_bindgen]
+pub fn load_chinese_font(bytes: Vec<u8>) -> Result<(), JsValue> {
+    if bytes.len() > 32 * 1024 * 1024 {
+        return Err(JsValue::from_str("Chinese font exceeds the 32 MB limit"));
+    }
+    if !bytes.is_empty() {
+        FONT_INBOX.with(|q| *q.borrow_mut() = Some(bytes));
+        request_repaint();
+    }
+    Ok(())
 }
 
 /// Run a command by id from JavaScript (automation, tests): `await command("library.info", "{}")`
@@ -618,6 +636,11 @@ impl WebApp {
 
 impl eframe::App for WebApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(bytes) = FONT_INBOX.with(|q| q.borrow_mut().take())
+            && let Err(error) = self.app.set_chinese_font(bytes)
+        {
+            notice(error);
+        }
         for text in safety::take_notices() {
             let now = ctx.input(|i| i.time);
             self.app.ui.toast = Some((text, now + NOTICE_SECS, None));
@@ -667,14 +690,14 @@ pub fn start(chinese_font: Vec<u8>) {
     safety::install_panic_hook();
     log::info!("lightcraft: wasm instantiated at {:.0} ms", perf_now());
     if chinese_font.is_empty() {
-        log::warn!("lightcraft: no Simplified Chinese font supplied; Chinese-only glyphs will show as boxes");
+        log::info!("raygun: Chinese fallback may load after startup");
     }
     let opts = Options::from_url();
     wasm_bindgen_futures::spawn_local(async move {
         // one tab per library: two would each keep their own copy and overwrite each other's saves
         if opts.store != "memory" && safety::acquire_tab_lock().await == Some(false) {
             safety::show_blocking(
-                "LightCraft is already open in another tab or window of this browser.\n\n\
+                "Raygun is already open in another tab or window of this browser.\n\n\
                  Switch to that tab, or close it and reload this page. (Two tabs would overwrite each other's changes.)",
             );
             return;
@@ -697,8 +720,8 @@ pub fn start(chinese_font: Vec<u8>) {
                 }
             }
             Err(e) => {
-                log::error!("LightCraft failed to start: {e:?}");
-                set_status(&format!("LightCraft failed to start: {e:?}"));
+                log::error!("Raygun failed to start: {e:?}");
+                set_status(&format!("Raygun failed to start: {e:?}"));
             }
         }
     });

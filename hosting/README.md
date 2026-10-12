@@ -1,4 +1,33 @@
-# Hosting Raygun web (WASM) on your own server via Portainer
+# Hosting Raygun web (WASM)
+
+## Current production host: Cloudflare
+
+`https://raygun.kaooffline.top` is served by the `raygun-web` static Worker.
+The exact hostname route leaves the account's other applications alone.
+`hosting/wrangler.jsonc` records this existing deployment; its account ID is
+public configuration, and authentication stays in Wrangler's local credential store.
+
+Build the bundle with `packaging/web/package.sh` and the release's pinned
+`CRAFT_FONTS_DIR`, or download the published release bundle. Unpack the
+checksum-verified `raygun-web-<version>.zip` into `dist/web` (without its enclosing
+version folder). Only packaged static files belong there: `target/web` also
+contains Cargo build artifacts and must not be uploaded wholesale.
+Keep the bundle's `_headers`: stable asset names must revalidate on upgrades.
+Deploy with Wrangler 4:
+
+```sh
+wrangler deployments list --config hosting/wrangler.jsonc
+wrangler deploy --config hosting/wrangler.jsonc --dry-run
+wrangler deploy --config hosting/wrangler.jsonc --message "Raygun <version> <commit>"
+```
+
+Record the prior active version before deploying. If verification fails, restore it
+with `wrangler rollback <version-id> --config hosting/wrangler.jsonc`.
+Verify the deployed version, HTML/JS/WASM hashes, empty fresh library, photo import,
+editing/export and persistence after reload. Updates take effect on the next reload;
+an open editor keeps its current module until then.
+
+## Alternative: your own server via Portainer
 
 ## Option A — build from the release (no uploads)
 

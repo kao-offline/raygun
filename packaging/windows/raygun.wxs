@@ -11,15 +11,14 @@
   and Raygun offered under "Open with" for PSD/PSB and the image formats it reads (without
   taking over the user's default app for them).
 
-  The UpgradeCode is inherited from LightCraft on purpose: installing Raygun upgrades a
-  LightCraft install in place instead of leaving two entries in Apps & features.
+  Raygun has its own permanent upgrade identity. LightCraft can remain installed for comparison.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
       Name="Raygun"
       Manufacturer="kao-offline"
       Version="$(var.Version)"
-      UpgradeCode="229BB552-5EFD-479A-BA86-8CB6D926390C"
+      UpgradeCode="BCDAA01E-634D-4E76-BF91-82085B21C3A5"
       Scope="perMachine"
       Compressed="yes"
       Language="1033">
@@ -41,10 +40,9 @@
     <!-- The folder of the installed version, so an upgrade installs
          where the user chose instead of moving back to Program Files.
          Searched into its own property: AppSearch would otherwise overwrite INSTALLFOLDER=...
-         given to msiexec. The LightCraft key migrates installs of the previous branding. -->
+         given to msiexec. Never inherit LightCraft's folder. -->
     <Property Id="PREVIOUSINSTALLFOLDER">
-      <RegistrySearch Id="PreviousInstallFolder" Root="HKLM" Key="Software\Raygun" Name="InstallFolder" Type="raw" />
-      <RegistrySearch Id="PreviousInstallFolderLegacy" Root="HKLM" Key="Software\LightCraft" Name="InstallFolder" Type="raw" />
+      <RegistrySearch Id="PreviousInstallFolder" Root="HKLM" Key="Software\Raygun\Installer" Name="InstallFolder" Type="raw" />
     </Property>
     <SetProperty Id="INSTALLFOLDER" Value="[PREVIOUSINSTALLFOLDER]" After="AppSearch" Sequence="both"
         Condition="PREVIOUSINSTALLFOLDER AND NOT INSTALLFOLDER" />
@@ -168,20 +166,26 @@
 
   <Fragment>
     <ComponentGroup Id="RaygunFiles" Directory="INSTALLFOLDER">
-      <Component Id="RaygunApp" Guid="8A1D3A39-F7C1-47B1-97AE-40C80BF82F4A">
+      <Component Id="RaygunApp" Guid="*">
         <File Id="RaygunExe" Source="$(var.BinDir)\lightcraft.exe" KeyPath="yes">
           <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Raygun"
               Description="Raygun photo library and raw developer" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
               Icon="RaygunIcon.ico" IconIndex="0" />
         </File>
 
-        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\lightcraft.exe" Value="[#RaygunExe]" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\raygun.exe" Value="[#RaygunExe]" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Raygun" Name="InstallFolder" Value="[INSTALLFOLDER]" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Raygun\Installer" Name="InstallFolder" Value="[INSTALLFOLDER]" Type="string" />
       </Component>
 
       <Component Id="RaygunCli">
         <File Id="RaygunCliExe" Source="$(var.BinDir)\lightcraft-cli.exe" KeyPath="yes" />
       </Component>
+      <File Id="RaygunLicense" Source="$(var.BinDir)\LICENSE" />
+      <File Id="RaygunMitNotice" Source="$(var.BinDir)\LICENSE-MIT" />
+      <File Id="RaygunApacheNotice" Source="$(var.BinDir)\LICENSE-APACHE" />
+      <File Id="RaygunNotice" Source="$(var.BinDir)\NOTICE" />
+      <Files Include="$(var.BinDir)\OFL-*.txt" />
     </ComponentGroup>
   </Fragment>
 </Wix>

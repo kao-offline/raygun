@@ -56,7 +56,7 @@ gzip size (5.25 MB). `wasm-opt -Oz`, when installed, shrinks it further.
 [craft-fonts](https://github.com/storytold/craft-fonts), the optional `CRAFT_FONTS_DIR` build
 input (`CRAFT_FONTS_DIR=../craft-fonts cargo xtask web`; release builds always set it). On wasm32
 `crates/engine/build.rs` embeds only BIZ UDPGothic Regular (UI and watermark fallback). The web
-bundle also ships Noto Sans CJK SC Regular as `lightcraft_zh_hans.otf` and loads it before the UI
+bundle also ships Noto Sans CJK SC Regular as `lightcraft_zh_hans.otf` and activates it in the background after the UI
 starts. Keeping the 16 MB Chinese face separate leaves the module under Cloudflare's 25 MiB
 per-file limit (the older Japanese-only module measured 21.8 MB). Without `CRAFT_FONTS_DIR`, the
 web build still works, but Chinese and Japanese text lack glyphs.
@@ -102,7 +102,7 @@ are the same in every version, so serve them with `Cache-Control: no-cache` (not
   - `thumbs/<key>.jpg` + `thumbs/index.json`: the rendered-thumbnail cache, with the desktop's
     budget (2 GB, least recently used pruned to 80 %).
 
-  A new library starts with the procedural demo photos. URL options: `?store=idb` forces
+  A new library starts empty. `?demo` seeds procedural photos only when creating a new library. `?bench` always uses a temporary in-memory demo library, so measurements never edit a persistent library. URL options: `?store=idb` forces
   IndexedDB, `?store=memory` keeps nothing, `?reset` deletes the stored library first (after a
   confirmation: it deletes every imported photo too).
 - **Keeping the library safe** (experimental: the library lives only in this browser):
