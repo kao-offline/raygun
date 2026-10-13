@@ -13,6 +13,14 @@
 
 ## Raygun rebrand + self-update (M9/M10)
 
+Release 0.2.1 at `808436d9` passed all release-build jobs and the local full
+quality gate. The compiled MSI has independent identities and required notices;
+the packaged About window shows Raygun and @kao-offline. The live web host serves
+the verified bundle. A three-run local browser comparison reduced median first
+frame from 441 to 225 ms while preserving preview p95 at 34 ms; live photo
+import/edit/export and OPFS reload passed. Large RAW/mobile performance and an
+actual Windows MSI upgrade against existing installations still need coverage.
+
 - Full product rebrand: Raygun name/title/about/menus, ray-gun icon set
   (`assets/app-icon/raygun.*`, hicolor, `.ico` via `xtask ico`, `.icns` via new
   `xtask icns`), `raygun-*` installer names on every OS, `io.github.kao_offline.raygun`
