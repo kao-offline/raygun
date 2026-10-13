@@ -8,6 +8,13 @@ use serde_json::{Value, json};
 const BIN: &str = env!("CARGO_BIN_EXE_lightcraft-cli");
 
 #[test]
+fn version_identifies_raygun() {
+    let output = Command::new(BIN).arg("--version").output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), format!("Raygun CLI {}", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn contact_sheet_exports_pdf_and_protects_originals() {
     let input = tmp("contact-sheet-input.png");
     gradient_png(&input);
@@ -337,7 +344,7 @@ fn snapshot_starts_without_a_gpu() {
         ),
     )
     .unwrap();
-    for (var, value, reason) in [("LIGHTCRAFT_GPU", "0", "LIGHTCRAFT_GPU=0"), ("LIGHTCRAFT_GPU_BACKEND", "off", "LIGHTCRAFT_GPU_BACKEND=off")] {
+    for (var, value, reason) in [("LIGHTCRAFT_GPU", "0", "RAYGUN_GPU=0"), ("LIGHTCRAFT_GPU_BACKEND", "off", "RAYGUN_GPU_BACKEND=off")] {
         let out = tmp(&format!("nogpu-{var}.png"));
         let o = Command::new(BIN)
             .env_remove("LIGHTCRAFT_GPU")
@@ -497,7 +504,7 @@ fn warnings_are_logged_on_stderr() {
         stderr
     };
     let warn = run("warn");
-    assert!(warn.contains("LIGHTCRAFT_GPU_BACKEND=bogus names no known backend"), "{warn}");
+    assert!(warn.contains("RAYGUN_GPU_BACKEND=bogus names no known backend"), "{warn}");
     let off = run("off");
     assert!(!off.contains("names no known backend"), "{off}");
 }

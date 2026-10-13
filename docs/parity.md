@@ -53,6 +53,16 @@ and prints the summary; `cargo xtask parity --write` refreshes the summary table
 Weighted completion (✅ = 1, 🟡 = ½, 🚫 left out): **81.2%** of 519 in-scope rows — P0 98.0% of 200 · P1 95.2% of 155 · P2 47.2% of 163.
 <!-- /parity:summary -->
 
+## Raygun distribution
+
+| Id | Feature | Tier | Status | Evidence | Notes |
+|---|---|---|---|---|---|
+| RG-UPDATE | In-place app updates | P0 | 🟡 | `cmd:update.check`, `cmd:update.download`, `cmd:update.apply`; `crates/engine/src/update.rs`, `crates/ui-egui/src/panels/updates.rs` | Background check/download and verified Windows MSI restart; automatic apply on macOS/Linux remains open. |
+| RG-EMPTY | Empty first-launch library | P0 | ✅ | `apps/lightcraft/src/main.rs` | Persistent libraries seed only with `--seed-demo`; 0.2.1 packaged native and live web fresh libraries verified at zero photos. |
+| RG-UPSTREAM | Incorporate upstream LightCraft | P1 | 🟡 | `docs/upstream-sync.md` | Upstream remote and reviewed merge/rebrand procedure; unattended source integration remains open. |
+| RG-COEXIST | Install alongside stock LightCraft | P0 | 🟡 | `packaging/windows/raygun.wxs`, `packaging/windows/check-identity.ps1`, `packaging/windows/check-msi.ps1` | Compiled 0.2.1 MSI passed independent product/component/registry identity and notice checks; old MSI rejected. Actual installation/upgrade against the user's live apps remains untested. |
+| RG-WEB-PERF | Responsive browser editing | P0 | 🟡 | `docs/performance-web.md` | Three-run release comparison: first frame median 441 -> 225 ms; draft preview p95 34 ms. Delayed font, single worker and live import/export/OPFS reload passed. Large RAW/mobile coverage remains open. |
+
 ## Top gaps
 
 Ordered by user impact, then tier, then effort. The checklist above counts features that *exist*; these are the gaps

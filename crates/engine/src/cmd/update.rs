@@ -61,28 +61,18 @@ pub fn specs() -> Vec<CommandSpec> {
             "Install Downloaded Update",
             [],
             None,
-            "{} — run the downloaded installer in place (Windows MSI, silent; keeps settings and library) → {applied}",
+            "{} — run the downloaded installer in place (Windows MSI, silent; keeps settings and library) → {scheduled, requiresExit, log}",
             always,
-            |_, _| {
+            |_s, _| {
                 const ID: &str = "update.apply";
                 #[cfg(target_os = "windows")]
                 {
-                    let dir = crate::update::updates_dir().ok_or_else(|| bad(ID, "no updates folder on this machine"))?;
-                    let msi = std::fs::read_dir(&dir)
-                        .map_err(|e| bad(ID, e.to_string()))?
-                        .filter_map(|e| e.ok().map(|e| e.path()))
-                        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("msi")))
-                        .max_by_key(|p| p.metadata().map(|m| m.modified().ok()).ok().flatten());
-                    let Some(msi) = msi else { return Err(bad(ID, "no downloaded installer: run update.download first")) };
-                    std::process::Command::new("msiexec")
-                        .args(["/i", &msi.to_string_lossy(), "/passive"])
-                        .spawn()
-                        .map_err(|e| bad(ID, format!("could not start the installer: {e}")))?;
-                    Ok(json!({"applied": true}))
+                    let log = crate::update::schedule_install(_s.library.as_ref().filter(|l| l.on_disk).map(|l| l.dir.as_path())).map_err(|e| bad(ID, e))?;
+                    Ok(json!({"scheduled": true, "requiresExit": true, "log": log.to_string_lossy()}))
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    return Err(bad(ID, "automatic install is Windows-only so far: download the disk image or package from the release and open it"));
+                    Err(bad(ID, "automatic install is Windows-only so far: download the disk image or package from the release and open it"))
                 }
             }
         ),

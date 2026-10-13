@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LightCraft</title>
-  <link rel="icon" href="data:,">
-  <meta name="description" content="LightCraft: open-source photo library and raw developer, running in your browser (WASM).">
+  <title>Raygun</title>
+  <link rel="icon" type="image/svg+xml" href="./raygun.svg">
+  <meta name="description" content="Raygun: open-source photo library and raw developer, running in your browser (WASM).">
   <style>
     :root { color-scheme: dark; }
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1c1c1c; }
@@ -19,30 +19,60 @@
 </head>
 <body>
   <canvas id="lightcraft_canvas"></canvas>
-  <div id="lightcraft_loading">Loading LightCraft…</div>
+  <div id="lightcraft_loading">Loading Raygun…</div>
   <div id="lightcraft_status" aria-live="polite"></div>
   <script type="module">
-    import init, { start, command } from "./lightcraft_web.js";
+    import init, { start, command, load_chinese_font } from "./lightcraft_web.js";
+    async function readChineseFont(response) {
+      if (!response.ok) return new Uint8Array();
+      const limit = 32 * 1024 * 1024;
+      if (Number(response.headers.get("Content-Length")) > limit) {
+        await response.body?.cancel();
+        throw new Error("Chinese font exceeds the 32 MB limit");
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Streaming font downloads are unavailable");
+      let bytes = new Uint8Array();
+      let total = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const next = total + value.byteLength;
+          if (next > limit) {
+            await reader.cancel();
+            throw new Error("Chinese font exceeds the 32 MB limit");
+          }
+          if (next > bytes.length) {
+            const grown = new Uint8Array(Math.min(limit, Math.max(next, bytes.length * 2, 65536)));
+            grown.set(bytes.subarray(0, total));
+            bytes = grown;
+          }
+          bytes.set(value, total);
+          total = next;
+        }
+      } finally { reader.releaseLock(); }
+      return bytes.subarray(0, total);
+    }
     (async () => {
       // The Chinese font is a separate file: embedding it would exceed the host's WASM size limit.
       // Font-free development builds can still run, with the same missing-glyph warning as before.
-      const chineseFont = fetch("./lightcraft_zh_hans.otf")
-        .then(async response => response.ok ? new Uint8Array(await response.arrayBuffer()) : new Uint8Array())
-        .catch(() => new Uint8Array());
       // Compile once; the render workers (worker.js) instantiate the same compiled module.
-      const [module, font] = await Promise.all([
-        WebAssembly.compileStreaming(fetch("./lightcraft_web_bg.wasm")),
-        chineseFont,
-      ]);
+      const module = await WebAssembly.compileStreaming(fetch("./lightcraft_web_bg.wasm"));
       globalThis.lightcraftModule = module;
       await init({ module_or_path: module });
       // automation: `await lightcraft.command("library.info", "{}")` → JSON text
       globalThis.lightcraft = { command };
-      start(font);
+      start(new Uint8Array());
+      // First paint doesn't wait for a large optional font; activate it when it arrives.
+      fetch("./lightcraft_zh_hans.otf")
+        .then(readChineseFont)
+        .then(load_chinese_font)
+        .catch(e => console.warn("Raygun font loading failed:", e));
     })().catch((e) => {
       console.error(e);
       const el = document.getElementById("lightcraft_loading");
-      if (el) el.textContent = "LightCraft failed to load: " + e;
+      if (el) el.textContent = "Raygun failed to load: " + e;
     });
   </script>
 </body>

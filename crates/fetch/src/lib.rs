@@ -300,7 +300,8 @@ fn verified(f: &FileSpec<'_>, path: &Path) -> Result<bool, DownloadError> {
     }
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+/// Stream a file's SHA-256 without loading it into memory (also used before applying updates).
+pub fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut h = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];

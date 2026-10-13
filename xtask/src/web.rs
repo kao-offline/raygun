@@ -131,6 +131,7 @@ pub fn run(args: &[&str]) -> Result<(), String> {
     for f in STATIC_FILES {
         std::fs::copy(root().join("apps/lightcraft-web").join(f), out.join(f)).map_err(|e| format!("copy {f}: {e}"))?;
     }
+    std::fs::copy(root().join("assets/app-icon/raygun.svg"), out.join("raygun.svg")).map_err(|e| format!("copy Raygun icon: {e}"))?;
     let chinese_font = copy_chinese_font(&out)?;
 
     // precompressed copies (skipped for --dev: they'd only slow the edit loop down)

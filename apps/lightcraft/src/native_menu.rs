@@ -457,7 +457,7 @@ mod tests {
         set_language(Locale::ZhHant);
         assert_eq!(label_text("File"), "檔案");
         assert_eq!(label_text("Settings…"), "設定…");
-        assert_eq!(label_text("Quit LightCraft"), "結束 LightCraft");
+        assert_eq!(label_text("Quit Raygun"), "結束 Raygun");
         set_language(Locale::En);
     }
 

@@ -59,53 +59,38 @@ fn app_icon() -> egui::IconData {
 
 struct App(LightcraftApp, PrefsWriter, #[cfg(target_os = "macos")] Option<native_menu::NativeMenu>, UpdatePoll);
 
-/// Weekly background update check: a detached thread writes the result (if any
-/// newer release) where [`UpdatePoll`] picks it up. Never blocks the UI.
+/// Weekly checks deliver only their fresh result; no stale on-disk alert survives an upgrade.
 struct UpdatePoll {
-    next: std::time::Instant,
-    seen_mtime: Option<std::time::SystemTime>,
+    result: Option<std::sync::mpsc::Receiver<Option<lightcraft_engine::update::Release>>>,
 }
 
 impl UpdatePoll {
     fn new() -> Self {
-        if lightcraft_engine::update::due_for_auto_check() {
-            std::thread::Builder::new()
-                .name("raygun-update-check".into())
-                .spawn(|| {
-                    lightcraft_engine::update::stamp_auto_check();
-                    if let Ok(Some(rel)) = lightcraft_engine::update::available() {
-                        let dir = lightcraft_engine::update::updates_dir();
-                        let path = dir.map(|d| d.join("available.json"));
-                        if let Some(path) = path
-                            && let Some(parent) = path.parent()
-                            && std::fs::create_dir_all(parent).is_ok()
-                        {
-                            let _ = std::fs::write(path, format!("{{\"tag\":{:?}}}", rel.tag));
-                        }
-                    }
-                })
-                .ok();
+        if !lightcraft_engine::update::due_for_auto_check() {
+            return Self { result: None };
         }
-        Self { next: std::time::Instant::now() + std::time::Duration::from_secs(60), seen_mtime: None }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let started = std::thread::Builder::new().name("raygun-update-check".into()).spawn(move || {
+            lightcraft_engine::update::stamp_auto_check();
+            let _ = sender.send(lightcraft_engine::update::available().ok().flatten());
+        });
+        Self { result: started.is_ok().then_some(receiver) }
     }
 
-    fn tick(&mut self, app: &mut LightcraftApp) {
-        if std::time::Instant::now() < self.next {
-            return;
-        }
-        self.next = std::time::Instant::now() + std::time::Duration::from_secs(60);
-        let path = lightcraft_engine::update::updates_dir().map(|d| d.join("available.json"));
-        let mtime = path.as_ref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
-        if mtime != self.seen_mtime {
-            self.seen_mtime = mtime;
-            if let Some(path) = path
-                && let Ok(text) = std::fs::read_to_string(&path)
-                && let Ok(v) = serde_json::from_str::<serde_json::Value>(&text)
-                && let Some(tag) = v.get("tag").and_then(serde_json::Value::as_str)
-                && !app.notices.iter().any(|n| n.contains(tag))
-            {
-                app.notices.push(format!("Raygun {tag} is available — Help ▸ Check for Updates… to install it without reinstalling."));
+    fn tick(&mut self, app: &mut LightcraftApp, ctx: &egui::Context) {
+        use std::sync::mpsc::TryRecvError;
+        match self.result.as_ref().map(|r| r.try_recv()) {
+            Some(Ok(release)) => {
+                self.result = None;
+                if let Some(release) = release {
+                    lightcraft_ui_egui::panels::updates::offer(app, release);
+                }
             }
+            Some(Err(TryRecvError::Disconnected)) => self.result = None,
+            _ => {}
+        }
+        if self.result.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
         }
     }
 }
@@ -126,9 +111,9 @@ impl eframe::App for App {
         self.0.logic(ctx);
         self.1.tick(&mut self.0, ctx);
         #[cfg(target_os = "macos")]
-        self.3.tick(&mut self.0);
+        self.3.tick(&mut self.0, ctx);
         #[cfg(not(target_os = "macos"))]
-        self.2.tick(&mut self.0);
+        self.2.tick(&mut self.0, ctx);
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.0.raw_input_hook(raw);

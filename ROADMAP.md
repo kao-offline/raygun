@@ -13,17 +13,27 @@
 
 ## Raygun rebrand + self-update (M9/M10)
 
+Release 0.2.1 at `808436d9` passed all release-build jobs and the local full
+quality gate. The compiled MSI has independent identities and required notices;
+the packaged About window shows Raygun and @kao-offline. The live web host serves
+the verified bundle. A three-run local browser comparison reduced median first
+frame from 441 to 225 ms while preserving preview p95 at 34 ms; live photo
+import/edit/export and OPFS reload passed. Large RAW/mobile performance and an
+actual Windows MSI upgrade against existing installations still need coverage.
+
 - Full product rebrand: Raygun name/title/about/menus, ray-gun icon set
   (`assets/app-icon/raygun.*`, hicolor, `.ico` via `xtask ico`, `.icns` via new
   `xtask icns`), `raygun-*` installer names on every OS, `io.github.kao_offline.raygun`
-  app id (MSI keeps LightCraft's UpgradeCode so it upgrades in place).
+  app id. From 0.2.1 the MSI has a separate, permanent Raygun UpgradeCode so LightCraft can coexist.
   `RAYGUN_*` env/config paths with `LIGHTCRAFT_*` legacy fallback.
 - New libraries start empty (`--seed-demo` opts back into demo photos).
 - `docs/upstream-sync.md`: `upstream` remote + merge routine + rebrand map, so
   LightCraft updates keep flowing in.
 - Self-update without reinstalling: `update.check`/`update.download`/`update.apply`
   commands, Help ▸ Check for Updates…, weekly background check with notice.
-  Windows applies the MSI silently in place.
+  Windows applies the MSI in place. M12 completes the update dialog, selects
+  the matching architecture, verifies SHA-256, waits for saved shutdown, and
+  records the installer result. macOS/Linux automatic apply remains open.
 
 Milestones toward full Adobe Lightroom parity (cloud Lightroom first, then every Lightroom Classic module), with wall-clock
 estimates for continuous (24/7) agent-driven development with 4–6 parallel agents. Estimates are calibrated on the sibling

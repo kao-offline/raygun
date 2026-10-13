@@ -1,11 +1,11 @@
-//! LightCraft in the browser: the same egui UI as the desktop app, compiled to WASM.
+//! Raygun in the browser: the same egui UI as the desktop app, compiled to WASM.
 //!
 //! Build with `cargo xtask web` (→ `target/web/`), then serve that folder over HTTP (see
 //! `docs/web.md`). Differences from the desktop host:
 //! - the library lives in browser storage (OPFS, or IndexedDB where OPFS can't be written from the
 //!   main thread): catalog journal, presets, view state and prefs are mirrored in memory and
 //!   flushed in the background ([`files`]); imported originals are stored by content hash
-//!   ([`store`]); a new library starts with the procedural demo photos;
+//!   ([`store`]); a new library starts empty (`?demo` opts into procedural photos);
 //! - renders run in Web Workers, each a second instance of this module ([`wire`], `workers`), and
 //!   fall back to the main thread (one job per frame) if workers can't start;
 //! - export downloads the file through the browser.
