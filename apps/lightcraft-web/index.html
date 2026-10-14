@@ -22,7 +22,6 @@
   <div id="lightcraft_loading">Loading Raygun…</div>
   <div id="lightcraft_status" aria-live="polite"></div>
   <script type="module">
-    import init, { start, command, load_chinese_font } from "./lightcraft_web.js";
     async function readChineseFont(response) {
       if (!response.ok) return new Uint8Array();
       const limit = 32 * 1024 * 1024;
@@ -58,9 +57,29 @@
       // The Chinese font is a separate file: embedding it would exceed the host's WASM size limit.
       // Font-free development builds can still run, with the same missing-glyph warning as before.
       // Compile once; the render workers (worker.js) instantiate the same compiled module.
-      const module = await WebAssembly.compileStreaming(fetch("./lightcraft_web_bg.wasm"));
-      globalThis.lightcraftModule = module;
-      await init({ module_or_path: module });
+      let api;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const [module, response] = await Promise.all([
+          WebAssembly.compileStreaming(fetch("./lightcraft_web_bg.wasm", { cache: "no-cache" })),
+          fetch("./lightcraft_web.js", { cache: "no-cache" }),
+        ]);
+        if (!response.ok) throw new Error("Could not load the editor: " + response.status);
+        // Keep the matching glue for this page's lifetime. A later deployment must
+        // not replace the imports of workers using this already-compiled module.
+        const moduleUrl = URL.createObjectURL(new Blob([await response.text()], { type: "text/javascript" }));
+        try {
+          api = await import(moduleUrl);
+          await api.default({ module_or_path: module });
+          globalThis.lightcraftModule = module;
+          globalThis.lightcraftModuleUrl = moduleUrl;
+          break;
+        } catch (error) {
+          URL.revokeObjectURL(moduleUrl);
+          if (attempt === 0 && error instanceof WebAssembly.LinkError) continue;
+          throw error;
+        }
+      }
+      const { start, command, load_chinese_font } = api;
       // automation: `await lightcraft.command("library.info", "{}")` → JSON text
       globalThis.lightcraft = { command };
       start(new Uint8Array());

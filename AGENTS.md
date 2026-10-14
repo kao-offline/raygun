@@ -1,6 +1,27 @@
 # Raygun — instructions for agents
 
-Raygun is an AGPL-3.0-or-later fork of LightCraft (pure-Rust photo library + non-destructive raw developer). The UI is reused verbatim from LightCraft `crates/ui-egui` (egui/eframe); RapidRAW is a feature reference only — no direct code copy until the license review for `rawler`/`lensfun`/`ort` lands. Native on Windows/macOS/Linux; web via WASM kept compatible. Desktop v1 only; Android later.
+Raygun is an AGPL-3.0-or-later fork of LightCraft (pure-Rust photo library + non-destructive raw developer). The UI is adapted from LightCraft `crates/ui-egui` (egui/eframe); RapidRAW algorithms may be adapted only within the named approvals below. Unreviewed dependencies and assets remain reference-only. Native on Windows/macOS/Linux; web via WASM kept compatible. Desktop v1 only; Android later.
+
+## RapidRAW integration review (2026-10-13)
+
+The maintainer requested a full port while explicitly retaining pure Rust and web compatibility.
+Review is pinned to RapidRAW `74597d066685283588502edbecd747bfe80404cf`:
+- Processing source: AGPL-3.0, compatible with this AGPL combined work. The mathematical
+  AgX and simplified-ACES transforms may be adapted with provenance in source/NOTICE.
+- `rawler` 0.7.1, pinned by RapidRAW to `a32bc1ff1f4f3c56d4d3226082f6eb17414f9159`:
+  LGPL-2.1. Not integrated: native mmap, unchecked/panic paths and camera-table provenance
+  need separate review/hardening. The isolated Olympus predictive algorithm is adapted in
+  `crates/raw/src/vendor/orfc.rs` under LGPL-2.1, with checked input, no unsafe/panics, no
+  camera-table dependency and license text shipped in every package. Other Rawler code
+  remains unapproved. Do not copy its camera matrices or assume WASM support.
+- Lensfun: library LGPL-3.0, C/C++; database CC-BY-SA-3.0. Neither is integrated by this
+  review. Data use needs attribution/share-alike and file-level provenance checks first.
+- `ort` 2.0.0-rc.10: Apache-2.0 Rust bindings to native ONNX Runtime (MIT), excluded by
+  the maintainer's pure-Rust decision. Existing Rust inference remains the adaptation path.
+- Model weights, film LUTs and other assets have separate licenses. The RapidRAW repository
+  license does not approve them; none are copied or bundled by this review.
+This approves the named processing transforms only, not an unchanged engine import. Track
+remaining parity and source/license evidence in `docs/rapidraw-port.md`.
 
 ## Start every session here
 1. Read `plan/STATUS.md` (current milestone, next unchecked task, blockers).

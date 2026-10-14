@@ -172,6 +172,27 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         for c in ["light.exposure", "light.contrast", "light.highlights", "light.shadows", "light.whites", "light.blacks"] {
             control(app, ui, d, c, true);
         }
+        let current = d.light.tone_mapper_mode();
+        let mut selected = current;
+        let names = ["Raygun", "Legacy AgX-style", "Legacy ACES-style", "AgX", "Simplified ACES"];
+        egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 0, bottom: 0 }).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::tr("Tone Mapper"));
+                let response = egui::ComboBox::from_id_salt("toneMapper")
+                    .width(ui.available_width())
+                    .truncate()
+                    .selected_text(names.get(current as usize).copied().unwrap_or("Raygun"))
+                    .show_ui(ui, |ui| {
+                        for (mode, name) in names.iter().enumerate() {
+                            ui.selectable_value(&mut selected, mode as u8, *name);
+                        }
+                    });
+                register(ui.ctx(), "control:light.toneMapper", response.response.rect);
+            });
+        });
+        if selected != current {
+            let _ = app.run("develop.set", json!({"control": "light.toneMapper", "value": selected}));
+        }
         ui.add_space(6.0);
         if d.hdr.enabled {
             let open = app.ui.flyout_open("sdrRendition");

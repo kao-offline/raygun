@@ -17,10 +17,10 @@ const CHINESE_FONT_FILE: &str = "lightcraft_zh_hans.otf";
 const CHINESE_FONT_LICENSE_FILE: &str = "OFL-noto-sans-cjk-sc.txt";
 
 /// Files copied from `apps/lightcraft-web/` into the bundle as they are.
-const STATIC_FILES: [&str; 2] = ["index.html", "worker.js"];
+const STATIC_FILES: [&str; 3] = ["index.html", "worker.js", "export-worker.js"];
 
 /// Bundle files that get precompressed copies.
-const COMPRESSED: [&str; 4] = ["index.html", "worker.js", "lightcraft_web.js", "lightcraft_web_bg.wasm"];
+const COMPRESSED: [&str; 5] = ["index.html", "worker.js", "export-worker.js", "lightcraft_web.js", "lightcraft_web_bg.wasm"];
 
 /// The Noto face is shipped beside the WASM rather than embedded in it: hosts such as Cloudflare
 /// Pages cap individual files at 25 MiB, while the complete site can contain larger assets.
@@ -36,8 +36,13 @@ fn chinese_font_in_manifest(manifest: &str) -> Option<(&str, &str)> {
 }
 
 fn copy_chinese_font(out: &Path) -> Result<bool, String> {
+    let fonts_dir = std::env::var_os("CRAFT_FONTS_DIR");
     // A previous font-enabled build must not leave an unlicensed/stale asset in a font-free one.
-    for name in [CHINESE_FONT_FILE, CHINESE_FONT_LICENSE_FILE, "lightcraft_zh_hans.otf.gz", "lightcraft_zh_hans.otf.br"] {
+    // With fonts enabled, compressed copies are checked against the new bytes below.
+    for name in [CHINESE_FONT_FILE, CHINESE_FONT_LICENSE_FILE, "lightcraft_zh_hans.otf.gz", "lightcraft_zh_hans.otf.br"]
+        .into_iter()
+        .filter(|name| fonts_dir.is_none() || !name.ends_with(".gz") && !name.ends_with(".br"))
+    {
         let path = out.join(name);
         match std::fs::remove_file(&path) {
             Ok(()) => (),
@@ -45,7 +50,7 @@ fn copy_chinese_font(out: &Path) -> Result<bool, String> {
             Err(e) => return Err(format!("{}: {e}", path.display())),
         }
     }
-    let Some(dir) = std::env::var_os("CRAFT_FONTS_DIR") else {
+    let Some(dir) = fonts_dir else {
         if std::env::var_os("CRAFT_FONTS_REQUIRED").is_some() {
             return Err("CRAFT_FONTS_REQUIRED is set but CRAFT_FONTS_DIR is missing".into());
         }
@@ -144,6 +149,8 @@ pub fn run(args: &[&str]) -> Result<(), String> {
                 let _ = std::fs::remove_file(out.join(format!("{f}.{ext}")));
             }
             (None, None)
+        } else if let Some((gz, br)) = verified_compressed(&p, &raw) {
+            (Some(gz), Some(br))
         } else {
             let gz = gzip(&raw)?;
             let br = brotli(&raw)?;
@@ -169,6 +176,31 @@ pub fn run(args: &[&str]) -> Result<(), String> {
 fn gzip(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
     e.write_all(data).and_then(|_| e.finish()).map_err(|e| format!("gzip: {e}"))
+}
+
+/// Reuse unchanged assets (especially the 16 MB font) only after decompressing
+/// both cached encodings and comparing every byte. No timestamps or stale hashes.
+fn verified_compressed(path: &Path, raw: &[u8]) -> Option<(usize, usize)> {
+    let gz = std::fs::File::open(format!("{}.gz", path.display())).ok()?;
+    let br = std::fs::File::open(format!("{}.br", path.display())).ok()?;
+    let sizes = (usize::try_from(gz.metadata().ok()?.len()).ok()?, usize::try_from(br.metadata().ok()?.len()).ok()?);
+    (decoded_matches(flate2::read::GzDecoder::new(gz), raw) && decoded_matches(::brotli::Decompressor::new(br, 8192), raw)).then_some(sizes)
+}
+
+fn decoded_matches(mut reader: impl std::io::Read, raw: &[u8]) -> bool {
+    let mut offset = 0usize;
+    let mut chunk = [0u8; 8192];
+    loop {
+        let Ok(n) = reader.read(&mut chunk) else { return false };
+        if n == 0 {
+            return offset == raw.len();
+        }
+        let Some(end) = offset.checked_add(n) else { return false };
+        if raw.get(offset..end) != chunk.get(..n) {
+            return false;
+        }
+        offset = end;
+    }
 }
 
 fn brotli(data: &[u8]) -> Result<Vec<u8>, String> {
@@ -280,6 +312,21 @@ fn handle(mut stream: TcpStream, dir: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compressed_cache_requires_exact_complete_decompressed_bytes() {
+        let raw = vec![42u8; 25_000];
+        let gz = super::gzip(&raw).unwrap();
+        let br = super::brotli(&raw).unwrap();
+        assert!(super::decoded_matches(flate2::read::GzDecoder::new(gz.as_slice()), &raw));
+        assert!(super::decoded_matches(::brotli::Decompressor::new(br.as_slice(), 8192), &raw));
+        assert!(!super::decoded_matches(flate2::read::GzDecoder::new(gz.as_slice()), &raw[..24_999]));
+        let mut changed = raw.clone();
+        changed[24_999] = 43;
+        assert!(!super::decoded_matches(::brotli::Decompressor::new(br.as_slice(), 8192), &changed));
+        assert!(!super::decoded_matches(flate2::read::GzDecoder::new(&gz[..gz.len() - 3]), &raw));
+        assert!(!super::decoded_matches(::brotli::Decompressor::new(&br[..br.len() - 1], 8192), &raw));
+    }
+
     use super::*;
 
     #[test]

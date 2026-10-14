@@ -83,7 +83,7 @@ copy_docs "$STAGE/share/doc/raygun"
 
 for f in bin/lightcraft bin/lightcraft-cli "share/applications/$APP_ID.desktop" \
   "share/icons/hicolor/256x256/apps/$APP_ID.png" "share/icons/hicolor/scalable/apps/$APP_ID.svg" \
-  share/doc/raygun/LICENSE-MIT share/doc/raygun/LICENSE-APACHE; do
+  share/doc/raygun/LICENSE share/doc/raygun/LICENSE-MIT share/doc/raygun/LICENSE-APACHE share/doc/raygun/LICENSE-LGPL-2.1; do
   if [ ! -e "$STAGE/$f" ]; then echo "error: $f is missing from the package" >&2; exit 1; fi
 done
 

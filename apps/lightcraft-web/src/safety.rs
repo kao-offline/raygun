@@ -89,6 +89,16 @@ pub fn install_panic_hook() {
     }));
 }
 
+/// Report a worker's escaped panic to its host, which can keep the editor usable.
+pub(crate) fn install_worker_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let scope: web_sys::DedicatedWorkerGlobalScope = js_sys::global().unchecked_into();
+        let out = js_sys::Object::new();
+        let _ = Reflect::set(&out, &"error".into(), &format!("Worker stopped after an internal error: {info}").into());
+        let _ = scope.post_message(&out);
+    }));
+}
+
 /// The name of the lock that keeps a library to one tab.
 const TAB_LOCK: &str = "lightcraft-library";
 

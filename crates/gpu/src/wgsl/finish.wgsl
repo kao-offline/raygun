@@ -47,6 +47,31 @@ fn curve(ch: u32, x: f32) -> f32 {
     return aux[o + i] + (aux[o + i + 1u] - aux[o + i]) * t;
 }
 
+fn rr_matrix(offset: u32, c: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(
+        dot(vec3<f32>(pf(offset), pf(offset + 1u), pf(offset + 2u)), c),
+        dot(vec3<f32>(pf(offset + 3u), pf(offset + 4u), pf(offset + 5u)), c),
+        dot(vec3<f32>(pf(offset + 6u), pf(offset + 7u), pf(offset + 8u)), c));
+}
+
+// RapidRAW's full RGB transforms. The AgX curve and matrices come from the CPU reference.
+fn rr_tone(color: vec3<f32>) -> vec3<f32> {
+    var rgb = rr_matrix(F_RR_TO_SRGB, clamp(color, vec3<f32>(-65504.0), vec3<f32>(65504.0)));
+    if (pu(F_RR_MODE) == 3u) {
+        rgb -= min(0.0, min(rgb.x, min(rgb.y, rgb.z)));
+        rgb = rr_matrix(F_RR_IN, rgb);
+        let x = clamp((log2(max(rgb / 0.18, vec3<f32>(1e-6))) + 15.2) / 20.2, vec3<f32>(0.0), vec3<f32>(1.0));
+        let indices = vec3<u32>(x * 4095.0);
+        let offset = pu(F_RR_CURVE_OFF);
+        rgb = vec3<f32>(aux[offset + indices.x], aux[offset + indices.y], aux[offset + indices.z]);
+        rgb = rr_matrix(F_RR_OUT, rgb);
+    } else {
+        rgb = max(rgb, vec3<f32>(0.0));
+        rgb = rgb * (2.51 * rgb + 0.03) / (rgb * (2.43 * rgb + 0.59) + 0.14);
+    }
+    return rr_matrix(F_RR_FROM_SRGB, clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)));
+}
+
 fn band_weights(h: f32) -> array<f32, 8> {
     var w: array<f32, 8>;
     for (var i = 0u; i < 8u; i++) {
@@ -407,8 +432,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     // --- tone map on luminance, highlight desaturation
+    if (pu(F_RR_MODE) >= 3u) {
+        c = rr_tone(c);
+    }
     let yl = lum2020(c);
-    let o = tone_apply(yl);
+    var o = tone_apply(yl);
+    if (pu(F_RR_MODE) >= 3u && pu(F_RR_ADJUST) == 0u) {
+        o = yl;
+    }
     var d = vec3<f32>(0.0);
     if (yl > 1e-9) {
         d = c * o / yl;

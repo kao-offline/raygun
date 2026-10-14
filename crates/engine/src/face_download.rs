@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use crate::activity::{Activity, Cancel, TaskHandle, Unit};
@@ -181,9 +182,14 @@ impl Drop for Downloads {
         for job in self.jobs.values() {
             job.cancel.store(true, Ordering::Relaxed);
         }
-        let started = std::time::Instant::now();
-        while self.running() && started.elapsed() < Duration::from_secs(1) {
-            std::thread::sleep(Duration::from_millis(10));
+        // Browser workers have no native download threads or std clock. Even an
+        // empty Session must be safe to drop after an export finishes.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let started = std::time::Instant::now();
+            while self.running() && started.elapsed() < Duration::from_secs(1) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
     }
 }

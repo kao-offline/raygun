@@ -1,5 +1,73 @@
 # Raygun web performance investigation — 0.2.1
 
+## Large-RAW iteration — 0.2.2 (in validation)
+
+Fixture: CC0 Sony ILCE-7M3 compressed ARW, 6000×4000 sensor output,
+SHA256 `250784580ea527442c09004417bb0eead484f2bf3ee8f9121a776ac65bb50d0f`.
+Chrome headless, 2560×1600, DPR 1, fresh OPFS contexts, two preview workers,
+eight Exposure steps and a full-size JPEG90 download. Reports and harness are
+under gitignored `target/release-review`. Readiness requires actual photo
+selection and completed worker jobs, rather than accepting a catalog count alone.
+
+Targets: export command accepted within 100 ms; preserve editing and cancellation
+during encoding; full export time within 20% of the paired baseline; identical
+final decoded pixels and metadata; steady draft p95 <=60 ms. Cold first-draft
+latency is reported separately. No compiler runs during the final measurements.
+
+Earlier large-RAW preview measurements were discarded: an asynchronous browser
+wait did not reliably await the predicate, leaving render jobs overlapping.
+The replacement harness explicitly polls completion from Node and requires each
+new preview key and idle queues. A downloaded file alone is insufficient evidence.
+
+Fresh paired runs with the 1024-pixel draft experiment measured baseline/candidate
+export times of 33.60/41.21 s and 26.54/26.53 s. Candidate command acceptance was
+11.3/16.2 ms; baseline acceptance blocked until encoding completed. All four JPEGs
+were byte-identical (SHA256
+`312d319dc335f5fe6075a91f5889f827cec4d41c5bbf11d0f6ca20ea3eee06e4`).
+The substantial timing variation prevents a total-export speedup claim. Steady
+draft latency still missed 60 ms. Reports: `*-paired-final*-large-raw.json`.
+
+The final beta caps whole-frame browser drag textures at 512 pixels and restores
+normal size on release. Background progress paints run four times per second;
+unmodified export pixels are borrowed instead of cloning a 96 MB 24MP buffer.
+
+Three interleaved pairs (candidate/baseline, baseline/candidate, candidate/baseline)
+on 2026-10-14, with no compiler active, measured:
+
+| Metric | Released 0.2.1 | 0.2.2 beta |
+|---|---:|---:|
+| Median steady draft completion | 199.8 ms | 66.9 ms |
+| Steady draft completion p95 | 233.4 ms | 83.3 ms |
+| Median first draft completion | 449.5 ms | 100.0 ms |
+| Export command acceptance | 23.21–24.67 s | 12.3–24.9 ms |
+| Median full-size JPEG download | 23.61 s | 25.15 s |
+
+Completion includes the new preview key and idle render queues, so these are
+conservative command-to-completion measurements, not measured screen-paint times.
+All six runs completed 20 remote jobs with zero inline jobs, browser exceptions or
+save errors. Drafts were 511×341; release restored the 1983×1322 preview. All six
+6000×4000 JPEGs were byte-identical, including metadata, with the SHA256 above.
+Raw evidence: `*-512-{a,b,c}-large-raw.json` and `summary-512.json` under
+`target/release-review/`.
+
+Decision: retain the bounded draft and worker export changes for the beta. Export
+acceptance and the 20% total-time guardrail passed; median total time increased
+6.5%, so this is a responsiveness improvement, not an export-throughput speedup.
+The original 60 ms large-RAW p95 goal remains unmet. The browser uses CPU photo
+processing (`crates/gpu` has a WASM CPU fallback); async WebGPU integration and
+frame/command scheduling need separate profiling. Do not claim full large-RAW
+smoothness, mobile performance or completed RapidRAW parity. Deployment is pending.
+
+Browser regression: set `PLAYWRIGHT_MODULE` to an installed Playwright module and
+optionally `CHROME_PATH`, then run
+`node packaging/web/test-export-worker.mjs http://127.0.0.1:8088`.
+This tests the actual WASM, importer, worker and encoder with a generated PNG,
+including session destruction; a download alone did not detect the former WASM
+native-clock panic. Memory/OPFS/IndexedDB cancellation, worker startup failure,
+completion, retry, Original-plus-XMP downloads and stored-original exports after
+reload passed on the final beta. Real downloaded pixels distinguish modes 0, 3
+and 4; the selected tone mapper and resulting pixels survive persistent reloads.
+
 ## Contract
 
 Goal: responsive startup and photo editing in the existing Rust/egui WASM app.

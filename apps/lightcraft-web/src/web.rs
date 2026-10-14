@@ -23,8 +23,6 @@ use crate::store::{Originals, content_hash, download_name, storage_key};
 use crate::wire::ThumbIndex;
 use crate::workers::{THUMB_INDEX, Workers};
 
-const ACCEPT: &str = ".jpg,.jpeg,.png,.tif,.tiff,.webp,.dng,.cr2,.nef,.arw,.psd,.jxl,.gif,.bmp";
-
 /// After a failed save, wait this long before trying again (ms).
 const SAVE_RETRY_MS: f64 = 2000.0;
 
@@ -127,7 +125,8 @@ fn open_picker(originals: Originals, backend: Option<Backend>, ctx: egui::Contex
     let Ok(input) = doc.create_element("input").map(|e| e.unchecked_into::<web_sys::HtmlInputElement>()) else { return };
     input.set_type("file");
     input.set_multiple(true);
-    input.set_accept(ACCEPT);
+    let accept = lightcraft_engine::import::EXTENSIONS.iter().map(|ext| format!(".{ext}")).collect::<Vec<_>>().join(",");
+    input.set_accept(&accept);
     let inp = input.clone();
     let on_change = Closure::<dyn FnMut()>::new(move || {
         if let Some(files) = inp.files() {
@@ -144,9 +143,13 @@ fn open_picker(originals: Originals, backend: Option<Backend>, ctx: egui::Contex
 }
 
 /// Offer `bytes` as a download named after `path`.
-fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
+    download_array(path, &js_sys::Uint8Array::from(bytes))
+}
+
+pub(crate) fn download_array(path: &str, bytes: &js_sys::Uint8Array) -> Result<(), String> {
     let e = |e: JsValue| format!("download failed: {e:?}");
-    let arr = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes));
+    let arr = js_sys::Array::of1(bytes);
     let opts = web_sys::BlobPropertyBag::new();
     let name = download_name(path);
     opts.set_type(crate::store::mime_for(name));
@@ -164,11 +167,12 @@ fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
     if let Some(w) = window() {
         let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(revoke.unchecked_ref(), 5000);
     }
-    log::info!("exported {name} ({} bytes)", bytes.len());
+    log::info!("exported {name} ({} bytes)", bytes.length());
     Ok(())
 }
 
 fn services(originals: Originals, backend: Option<Backend>, files: Files, frozen: Rc<Cell<bool>>, ctx: egui::Context) -> Services {
+    let export_worker = crate::export_worker::starter(originals.clone(), backend.clone(), ctx.clone());
     let (backup_backend, backup_files) = (backend.clone(), files);
     let restore_backend = backend.clone();
     Services {
@@ -225,6 +229,7 @@ fn services(originals: Originals, backend: Option<Backend>, files: Files, frozen
         write: Some(Box::new(download)),
         // downloads happen on the main thread: exports run in the foreground on the web
         write_shared: None,
+        export_worker: Some(export_worker),
         png: Some(Box::new(|img: &lightcraft_raster::Rgba8| {
             lightcraft_codecs::encode_png(&lightcraft_codecs::EncodeImage::rgba8(img), &lightcraft_codecs::EncodeMeta::default()).unwrap_or_default()
         })),
@@ -452,6 +457,7 @@ impl WebApp {
                 &cache,
                 app.session.cache_bytes(),
                 cc.egui_ctx.clone(),
+                originals.clone(),
             )
         });
         if let Some(w) = &workers {
@@ -606,6 +612,7 @@ impl WebApp {
     fn web_stats(&self) -> serde_json::Value {
         let (alive, ready, remote, inline) = self.workers.as_ref().map_or((0, 0, 0, 0), Workers::stats);
         let (orig_n, orig_bytes) = self.originals.usage();
+        let preview = self.app.renderer.textures.get(&lightcraft_ui_egui::render::Slot::Main);
         json!({
             "storage": self.backend.as_ref().map_or("memory", |b| b.kind()),
             "library": self.lib_dir,
@@ -618,6 +625,11 @@ impl WebApp {
             "renderQueue": self.app.renderer.queued(),
             "rendersInFlight": self.app.renderer.in_flight(),
             "thumbTextures": self.app.renderer.thumb_textures(),
+            "previewKey": preview.map(|t| t.key.to_string()),
+            "previewSize": preview.map(|t| t.size),
+            "lastPreviewMs": preview.map(|t| t.ms),
+            "export": self.app.export.as_ref().map(|task| task.status()),
+            "lastExportResult": self.app.last_export_result,
         })
     }
 

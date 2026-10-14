@@ -61,7 +61,9 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         return;
     }
     // look again soon: a young task becomes due, bars move
-    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+    // Browser exports contend with full-canvas paints. Four progress updates per
+    // second are enough; pointer/keyboard input still requests an immediate frame.
+    ctx.request_repaint_after(std::time::Duration::from_millis(if cfg!(target_arch = "wasm32") { 250 } else { 100 }));
     let tasks: Vec<&TaskInfo> = all.iter().filter(|t| t.age_ms >= SHOW_AFTER_MS).collect();
     if tasks.is_empty() {
         return;

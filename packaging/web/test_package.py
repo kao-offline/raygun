@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(dir=SCRATCH) as temporary:
     work = Path(temporary)
     site = work / "web"
     site.mkdir()
-    required = ["index.html", "worker.js", "lightcraft_web.js", "lightcraft_web_bg.wasm", "raygun.svg"]
+    required = ["index.html", "worker.js", "export-worker.js", "lightcraft_web.js", "lightcraft_web_bg.wasm", "raygun.svg"]
     for name in required:
         (site / name).write_bytes(b"synthetic static output")
         (site / (name + ".gz")).write_bytes(b"synthetic compressed output")
@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(dir=SCRATCH) as temporary:
     with zipfile.ZipFile(archive) as bundle:
         files = {Path(name).name for name in bundle.namelist() if not name.endswith("/")}
         expected = set(required + [name + ".gz" for name in required])
-        expected.update(["_headers", ".htaccess", "HOSTING.md", "README.md", "LICENSE", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE", "OFL-Inter.txt"])
+        expected.update(["_headers", ".htaccess", "HOSTING.md", "README.md", "LICENSE", "LICENSE-MIT", "LICENSE-APACHE", "LICENSE-LGPL-2.1", "NOTICE", "OFL-Inter.txt"])
         assert expected <= files, expected - files
         assert "host-build-script.exe" not in files and ".cargo-lock" not in files
         assert all("/deps/" not in name and "/build/" not in name for name in bundle.namelist())

@@ -21,7 +21,7 @@ use lightcraft_engine::catalog::PhotoId;
 use lightcraft_engine::media::{RenderJob, RenderResult, SourceLevel};
 use lightcraft_engine::pipeline::Rendered;
 use lightcraft_preview::{Hash128, PreviewCache};
-use lightcraft_raster::{Histogram, Rgba8};
+use lightcraft_raster::Histogram;
 use lightcraft_ui_egui::render::{RenderOffload, Slot};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -40,7 +40,7 @@ fn get(o: &JsValue, k: &str) -> JsValue {
     Reflect::get(o, &k.into()).unwrap_or(JsValue::UNDEFINED)
 }
 
-fn now() -> f64 {
+pub(crate) fn now() -> f64 {
     let perf = get(&js_sys::global(), "performance");
     let f = get(&perf, "now");
     f.dyn_ref::<js_sys::Function>().and_then(|f| f.call0(&perf).ok()).and_then(|v| v.as_f64()).unwrap_or(0.0)
@@ -67,6 +67,10 @@ pub fn worker_main(store: String) {
         };
         let s = scope.clone();
         let onmessage = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
+            if !get(&e.data(), "original").is_undefined() || !get(&e.data(), "originalError").is_undefined() {
+                crate::export_worker::resolve_original(e.data());
+                return;
+            }
             let (s, b) = (s.clone(), backend.clone());
             wasm_bindgen_futures::spawn_local(async move { handle(&s, b, e.data()).await });
         });
@@ -106,7 +110,10 @@ async fn handle(scope: &web_sys::DedicatedWorkerGlobalScope, backend: Option<Bac
         let original = match CORE.with(|c| c.borrow_mut().needs_original(&job)) {
             Some(hash) => match &backend {
                 Some(b) => b.read(&crate::store::storage_key(&hash)).await?,
-                None => None,
+                None => match &job.origin {
+                    lightcraft_engine::catalog::Source::File { path } => Some(crate::export_worker::read_from_page(scope, path).await?),
+                    _ => None,
+                },
             },
             None => None,
         };
@@ -125,7 +132,7 @@ async fn handle(scope: &web_sys::DedicatedWorkerGlobalScope, backend: Option<Bac
     .await;
     match result {
         Ok((r, stored)) => {
-            let rgba = Uint8Array::from(r.image.as_bytes().as_ref());
+            let rgba = Uint8Array::from(r.image.data.as_flattened());
             let h = &r.histogram;
             let hist = Uint32Array::new_with_length(4 * 256 + 1);
             for (i, ch) in [&h.r, &h.g, &h.b, &h.luma].into_iter().enumerate() {
@@ -192,6 +199,7 @@ struct Inner {
     remote_done: u64,
     inline_done: u64,
     inline_this_frame: bool,
+    originals: crate::store::Originals,
 }
 
 impl Inner {
@@ -225,6 +233,7 @@ impl Workers {
         cache: &Arc<PreviewCache>,
         budget: u64,
         ctx: egui::Context,
+        originals: crate::store::Originals,
     ) -> Workers {
         let w = Workers(Rc::new(RefCell::new(Inner {
             preview_generation: CacheWatch::new(cache),
@@ -239,6 +248,7 @@ impl Workers {
             remote_done: 0,
             inline_done: 0,
             inline_this_frame: false,
+            originals,
         })));
         let module = get(&js_sys::global(), "lightcraftModule");
         if module.is_undefined() {
@@ -266,6 +276,7 @@ impl Workers {
             onerror.forget();
             let init = Object::new();
             set(&init, "module", &module);
+            set(&init, "moduleUrl", &get(&js_sys::global(), "lightcraftModuleUrl"));
             set(&init, "store", &store.into());
             if let Err(e) = worker.post_message(&init) {
                 log::warn!("render worker {i}: {e:?}");
@@ -306,6 +317,44 @@ impl Workers {
         let g = &mut *g;
         g.ctx.request_repaint();
         let Some(w) = g.workers.get_mut(i) else { return };
+        if let Some(path) = get(&data, "needOriginal").as_string() {
+            let worker = w.worker.clone();
+            let out = Object::new();
+            let sent = match g.originals.get(&path) {
+                Some(bytes) => {
+                    let bytes = Uint8Array::from(bytes.as_ref());
+                    set(&out, "original", &bytes);
+                    worker.post_message_with_transfer(&out, &Array::of1(&bytes.buffer()))
+                }
+                None => {
+                    set(&out, "originalError", &format!("{path}: original not loaded").into());
+                    worker.post_message(&out)
+                }
+            };
+            if let Err(error) = sent {
+                // Do not leave a job waiting forever for an original that failed to transfer.
+                w.dead = true;
+                worker.terminate();
+                if let Some(b) = w.busy.take() {
+                    g.done.push((
+                        b.slot,
+                        RenderResult {
+                            request_id: b.request_id,
+                            source_key: None,
+                            photo: b.photo,
+                            level: b.level,
+                            key: b.key,
+                            rendered: Err(format!("Original transfer failed: {error:?}")),
+                            loaded: None,
+                            quick: None,
+                            display: None,
+                        },
+                        0.0,
+                    ));
+                }
+            }
+            return;
+        }
         if get(&data, "ready").is_truthy() {
             w.ready = true;
             return;
@@ -315,16 +364,19 @@ impl Workers {
         let ms = get(&data, "ms").as_f64().unwrap_or(0.0);
         let rendered = if get(&data, "ok").is_truthy() {
             let (wd, ht) = (get(&data, "w").as_f64().unwrap_or(0.0) as usize, get(&data, "h").as_f64().unwrap_or(0.0) as usize);
-            let rgba = Uint8Array::new(&get(&data, "rgba")).to_vec();
-            let hist = Uint32Array::new(&get(&data, "hist")).to_vec();
-            match Rgba8::from_bytes(wd, ht, &rgba) {
-                Some(image) if hist.len() == 1025 => {
-                    let ch = |k: usize| hist[k * 256..(k + 1) * 256].to_vec();
-                    let histogram = Histogram { r: ch(0), g: ch(1), b: ch(2), luma: ch(3), total: hist[1024] };
-                    Ok(Rendered { image, histogram, deep: None })
+            (|| {
+                let rgba = get(&data, "rgba").dyn_into::<Uint8Array>().map_err(|_| "render worker: bad pixels")?;
+                let hist = get(&data, "hist").dyn_into::<Uint32Array>().map_err(|_| "render worker: bad histogram")?;
+                if hist.length() != 1025 {
+                    return Err("render worker: bad histogram".into());
                 }
-                _ => Err("render worker: bad image".to_string()),
-            }
+                let mut image = crate::wire::transfer_image(wd, ht, rgba.length() as usize)?;
+                rgba.copy_to(image.data.as_flattened_mut());
+                let hist = hist.to_vec();
+                let ch = |k: usize| hist.get(k * 256..(k + 1) * 256).unwrap_or_default().to_vec();
+                let histogram = Histogram { r: ch(0), g: ch(1), b: ch(2), luma: ch(3), total: hist.last().copied().unwrap_or(0) };
+                Ok(Rendered { image, histogram, deep: None })
+            })()
         } else {
             Err(get(&data, "err").as_string().unwrap_or_else(|| "render worker failed".into()))
         };

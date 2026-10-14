@@ -1,4 +1,4 @@
-//! Olympus ORF — uncompressed variants.
+//! Olympus ORF — uncompressed and predictive-compressed variants.
 //!
 //! Sources: TIFF 6.0 (the `IIRO`/`MMOR` container is a TIFF with a different magic number), Exif 2.3 (`CFAPattern`,
 //! tag `0xa302`), the ExifTool Olympus tag-name documentation (maker-note sub-directories `0x2020` CameraSettings —
@@ -28,8 +28,8 @@
 //!   (last), the bit order and the pixel order were fixed by measurement on the CC0 files 2878 (E-300), 3540 (E-500)
 //!   and 3624 (E-330), as was the sensor-origin RGGB anchoring (the maker-note crop offsets are odd). The E-M5 Mark II
 //!   and PEN-F files were only checked for smoothness, not for CFA anchoring or black level.
-//! - Olympus's compressed ORF (most interchangeable-lens bodies since ~2008) is not decoded: no permissively
-//!   licensed description exists. It reports [`RawError::Unsupported`]; the embedded preview still works.
+//! - Single-strip predictive-compressed ORF uses the safe Rust adaptation in `orfc`,
+//!   reviewed under LGPL-2.1. Multi-strip compressed variants remain unsupported.
 //! - The colour-filter layout is the file's Exif `CFAPattern`: GRBG on the E-1 and E-400, RGGB on the XZ-2, where
 //!   the colours of the decoded mosaic follow the embedded JPEG best with exactly that layout
 //!   (`corpus_orf_cfa_patterns`). The samples' active areas start at even offsets, so they can't tell whether the
@@ -195,6 +195,8 @@ pub(crate) fn decode(bytes: &[u8], mode: Mode) -> Result<RawImage> {
     let chunks = info.chunks(bytes.len() as u64);
     let total: u64 = chunks.iter().map(|c| c.len).sum();
     let stated = cfa_from_exif(&tiff);
+    let mn = maker_note(bytes, &tiff);
+    let ip = mn.as_ref().and_then(|m| sub_ifd(bytes, m, IMAGE_PROCESSING));
     let mut two_field = false;
     let (mut data, bits) = if info.compression != 1 {
         return Err(RawError::Unsupported(format!("ORF compression {}", info.compression)));
@@ -249,7 +251,14 @@ pub(crate) fn decode(bytes: &[u8], mode: Mode) -> Result<RawImage> {
         };
         (RawData::U16(d), 12)
     } else {
-        return Err(RawError::Unsupported("Olympus compressed ORF".into()));
+        if chunks.len() != 1 {
+            return Err(RawError::Unsupported("multi-strip compressed ORF".into()));
+        }
+        let chunk = chunks.first().ok_or_else(|| RawError::Corrupt("ORF strip missing".into()))?;
+        let src = chunk_bytes(bytes, chunk).ok_or_else(|| RawError::Corrupt("ORF strip outside file".into()))?;
+        let bits = ip.as_ref().and_then(|i| i.u16(0x0611)).map_or(12, u32::from);
+        let samples = super::orfc::decode(src, w, h, bits)?;
+        (RawData::U16(samples), bits)
     };
     let RawData::U16(ref mut samples) = data else { return Err(RawError::Unsupported("float ORF".into())) };
     let bits = if bits == 16 && samples.iter().step_by(7).filter(|v| *v & 15 != 0).count() * 700 <= n {
@@ -269,8 +278,6 @@ pub(crate) fn decode(bytes: &[u8], mode: Mode) -> Result<RawImage> {
         bits
     };
 
-    let mn = maker_note(bytes, &tiff);
-    let ip = mn.as_ref().and_then(|m| sub_ifd(bytes, m, IMAGE_PROCESSING));
     let active = match ip.as_ref().map(|i| CROP.map(|tag| i.u64(tag).map(|v| v as usize))) {
         Some([Some(x), Some(y), Some(cw), Some(ch)]) if cw > 0 && ch > 0 && x + cw <= w && y + ch <= h => Rect::new(x, y, cw, ch),
         _ => Rect::new(0, 0, w, h),
@@ -279,7 +286,8 @@ pub(crate) fn decode(bytes: &[u8], mode: Mode) -> Result<RawImage> {
     let black = match ip.as_ref().and_then(|i| i.f64s(BLACK)).as_deref() {
         Some(v @ [_, _, _, _]) => {
             let a = cfa.shifted(active.x, active.y);
-            let values = a.pattern.iter().map(|&c| [v[0], (v[1] + v[2]) / 2.0, v[3]][c as usize] as f32).collect();
+            let scale = if bits == 14 { 4.0 } else { 1.0 };
+            let values = a.pattern.iter().map(|&c| ([v[0], (v[1] + v[2]) / 2.0, v[3]][c as usize] * scale) as f32).collect();
             BlackLevel { repeat_rows: 2, repeat_cols: 2, values, ..Default::default() }
         }
         _ => BlackLevel::uniform(0.0),
@@ -583,7 +591,7 @@ mod tests {
         let bytes = orf(w as u32, h as u32, 12, le);
         assert_eq!(crate::decode(&bytes).unwrap().data, RawData::U16(px));
         let bytes = orf(w as u32, h as u32, 16, vec![0; 40]);
-        assert!(matches!(crate::decode(&bytes), Err(RawError::Unsupported(_))));
+        assert!(matches!(crate::decode(&bytes), Err(RawError::Corrupt(_))));
     }
 
     /// Pack samples into 16-byte blocks: ten little-endian 12-bit fields, then a zero pad byte.

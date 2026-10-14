@@ -167,7 +167,7 @@ rustPlatform.buildRustPackage {
     # Licences for everything embedded in the binaries: Inter, the app icon, each craft font.
     doc=$out/share/doc/lightcraft
     install -Dm644 -t "$doc" \
-      README.md LICENSE-MIT LICENSE-APACHE NOTICE \
+      README.md LICENSE LICENSE-MIT LICENSE-APACHE LICENSE-LGPL-2.1 NOTICE \
       assets/ATTRIBUTION.md assets/fonts/OFL-Inter.txt
   ''
   + lib.optionalString (craft-fonts != null) ''
@@ -201,8 +201,7 @@ rustPlatform.buildRustPackage {
     '';
     homepage = "https://getartcraft.com/apps/lightcraft";
     license = with lib.licenses; [
-      mit
-      asl20
+      agpl3Plus
     ];
     sourceProvenance = with lib.sourceTypes; [ fromSource ];
     platforms = lib.platforms.linux ++ lib.platforms.darwin;

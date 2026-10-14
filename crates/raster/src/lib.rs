@@ -241,7 +241,7 @@ impl Rgba8 {
         self.data.iter().flat_map(|p| *p).collect()
     }
     pub fn from_bytes(width: usize, height: usize, bytes: &[u8]) -> Option<Self> {
-        if bytes.len() != width * height * 4 {
+        if width.checked_mul(height).and_then(|n| n.checked_mul(4)) != Some(bytes.len()) {
             return None;
         }
         Some(Self { width, height, data: bytes.as_chunks::<4>().0.iter().map(|c| [c[0], c[1], c[2], c[3]]).collect() })
@@ -256,6 +256,12 @@ impl Rgba8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rgba_bytes_rejects_overflowing_dimensions() {
+        assert!(Rgba8::from_bytes(usize::MAX, 2, &[]).is_none());
+        assert!(Rgba8::from_bytes(usize::MAX / 2 + 1, 1, &[]).is_none());
+    }
     use lightcraft_geom::Orientation;
 
     #[test]

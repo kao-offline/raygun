@@ -120,6 +120,13 @@ fn banded_full_size_render_matches() {
 fn cases() -> Vec<(&'static str, Edit)> {
     vec![
         ("default", |_| {}),
+        ("RapidRAW AgX", |s| s.light.tone_mapper = 3.0),
+        ("RapidRAW simplified ACES", |s| s.light.tone_mapper = 4.0),
+        ("RapidRAW AgX with tone controls", |s| {
+            s.light.tone_mapper = 3.0;
+            s.light.contrast = 25.0;
+            s.light.whites = -15.0;
+        }),
         ("typical", typical),
         ("exposure/contrast/whites", |s| {
             s.light.exposure = -0.7;

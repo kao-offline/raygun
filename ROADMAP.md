@@ -1,6 +1,6 @@
 # Raygun roadmap
 
-> Phase 0 fork of LightCraft (`storytold/lightcraft`, shallow-cloned 2026-10-10). UI reused verbatim from `crates/ui-egui`. RapidRAW is a feature reference. License is AGPL-3.0-or-later. Desktop v1; WASM kept compatible; Android later.
+> Fork of LightCraft (`storytold/lightcraft`, shallow-cloned 2026-10-10). UI adapted from `crates/ui-egui`. Selected RapidRAW algorithms are adapted under reviewed licences; the full port is incomplete. License is AGPL-3.0-or-later. Desktop v1; WASM kept compatible; Android later.
 
 ## Raygun progress (M0–M4 landed, all loop-green)
 
@@ -11,7 +11,21 @@
 - **M4:** `cull.duplicates` (signature-based near-duplicate groups + optional reject-others) and `export.estimate` (in-memory render reporting exact bytes, writes nothing).
 - **Next:** M5 WASM verification, PNG white-frame icon export, `lightcraft` → `raygun` binary rename, film/LUT preset packs, BM3D + depth-model follow-ups.
 
-## Raygun rebrand + self-update (M9/M10)
+## RapidRAW adaptation (M13, in progress)
+
+The architecture remains pure Rust on desktop and web. Actual AgX and simplified
+ACES transforms now have CPU/WGSL implementations, with legacy modes retained
+for saved-edit compatibility. Compressed Olympus E-M1 and E-M10 III sensor pixels
+match independent references exactly. Browser export moves into a disposable
+worker and temporary-memory originals can reach preview workers. The eight-step
+quality gate and browser correctness checks pass. Three paired 24MP RAW runs
+reduce steady draft p95 from 233 to 83 ms; export acceptance is 12–25 ms, with
+byte-identical JPEGs. The 60 ms goal remains open and total export throughput is
+not improved. Release packaging and deployment are pending. See
+[`docs/rapidraw-port.md`](docs/rapidraw-port.md) for remaining scope; native runtime,
+model, lens-profile and broad camera coverage are not full-port claims.
+
+## Raygun release 0.2.1 evidence
 
 Release 0.2.1 at `808436d9` passed all release-build jobs and the local full
 quality gate. The compiled MSI has independent identities and required notices;
@@ -58,7 +72,7 @@ duplicate Local entries #22, black GPU exports on an Intel iGPU #78).
 | Dimension | Estimate | What's true today | Biggest gaps |
 |---|---:|---|---|
 | **Feature checklist** | 79.7% | P0 core and P1 nearly complete: import (Add / Copy / Move, templates, devices), library, grid/loupe/compare/survey, every Edit slider, curves, colour grading, masking tools, crop/Upright, heal/clone, presets/profiles, versions/history, sync, export, menus, shortcuts | P0: full-resolution zoom detail; P1: lens-profile database, content-aware fill (patch synthesis), video playback/trim |
-| **RAW coverage** (formats people shoot) | ~55% | DNG (all kinds), CR2, CR3 lossless Bayer and version 0x100/0x200 C-RAW (M50/R100/R8 pixel-exact corpus), ARW, NEF (uncompressed + Huffman lossless/lossy), RAF (uncompressed, lossless/lossy compressed Bayer and X-Trans), uncompressed ORF, uncompressed Samsung SRW (NX5 to NX1100, EX1, WB2000), RW2 / RWL / Panasonic RAW (every raw format, checked on 178 files from 118 Panasonic and Leica bodies), PEF; every container's embedded preview (incl. CR3) | **CR3** (every Canon since ~2018), compressed ORF, compressed Samsung SRW (NX1, NX30, NX300, NX500, NX2000, NX3000, NX3300, NX mini), Nikon lossy-after-split, Canon sRAW, HEIC/AVIF. NEFs labelled compressed but stored uncompressed (Z 6 packed 14-bit, D850 12-bit uncompressed). Nikon High Efficiency NEF (HE / HE★: Z 8, Z 9, Z 6III, Z f; JPEG XS-based, preview only, #193). Per-model verification is thin (~55 corpus files vs >1,000 models) |
+| **RAW coverage** (formats people shoot) | ~55% | DNG (all kinds), CR2, CR3 lossless Bayer and version 0x100/0x200 C-RAW (M50/R100/R8 pixel-exact corpus), ARW, NEF (uncompressed + Huffman lossless/lossy), RAF (uncompressed, lossless/lossy compressed Bayer and X-Trans), uncompressed ORF and predictive-compressed E-M1/E-M10 III ORF, uncompressed Samsung SRW (NX5 to NX1100, EX1, WB2000), RW2 / RWL / Panasonic RAW (every raw format, checked on 178 files from 118 Panasonic and Leica bodies), PEF; every container's embedded preview (incl. CR3) | **CR3** (every Canon since ~2018), unverified ORF variants, compressed Samsung SRW (NX1, NX30, NX300, NX500, NX2000, NX3000, NX3300, NX mini), Nikon lossy-after-split, Canon sRAW, HEIC/AVIF. NEFs labelled compressed but stored uncompressed (Z 6 packed 14-bit, D850 12-bit uncompressed). Nikon High Efficiency NEF (HE / HE★: Z 8, Z 9, Z 6III, Z f; JPEG XS-based, preview only, #193). Per-model verification is thin (~55 corpus files vs >1,000 models) |
 | **Colour & image quality** | ~55–65% | Pipeline is complete and fast; GPU path CPU-exact within 1/255 | **No measured camera calibration database**: ARW, NEF, RW2, RAF, CR3, CR2 and PEF have guarded camera-JPEG colour estimates, with bundled ILCE-7CR, ILCE-7M4, X-H2S and X-T4 profiles (docs/camera-preview-colour.md); 52 models whose JPEG fit is rejected start from matrices fitted to measured spectral sensitivities; other non-DNG raws and rejected estimates use a neutral matrix. Colour fidelity remains incomplete. No lens-profile database. No measured fidelity against Lightroom (tone, highlights, texture/clarity, NR, sharpening are tuned by eye) |
 | **AI & computational** | ~15–20% | Assisted culling (focus, bursts), auto tone, HDR/panorama merge; subject/sky/background masks as classical heuristics, or the photo's own segmentation mattes when it ships them (DNG semantic masks, e.g. iPhone ProRAW's sky matte); non-destructive Bayer RAW denoise with opt-in weights on pure-Rust CPU/GPU; **faces (MVP, [docs/faces.md](docs/faces.md))**: a pure-Rust detector (a 232 KB opt-in download), opt-in recognition models (one-click download or add a file; they run on the shared pure-Rust CPU interpreter; pinned SFace/AuraFace embeddings agree with an independent reference runtime on 40 public crops; one-thread medians 34–36 / 233–252 ms (AuraFace remains expensive)), a background scan that finds and embeds faces, name suggestions, a person's page with look-alike faces to confirm, an Unnamed faces section (look-alikes together, select a group and name it at once) | Real segmentation masks (subject, sky, people, objects, landscape, depth), denoise model policy / linear RGB / quality verification, super resolution, lens blur, generative remove, natural-language search; for faces: clusters with separators between groups, small faces in large photos (the detector looks at 640 px), thresholds calibrated on live faces, writing face regions back to XMP. **Blocked on a model strategy** (licensable weights or our own training; pure-Rust inference is feasible) |
 | **Workflow & library** | ~85% (single machine) | Robust catalog (journal + snapshots, background compaction, crash-tested), 85k-photo libraries stay responsive, Local browsing with automatic cleanup, XMP interop, keywords, smart albums, Move import | Opening an 85k library takes 1.7–4.7 s; no cloud sync (out of scope), no tablet companion (#74, roadmap), shared albums, publish services, tethering |

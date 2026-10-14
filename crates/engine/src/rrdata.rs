@@ -182,8 +182,8 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
     // toneMapper: basic/agx/aces (also "filmic" as base alias).
     if let Some(t) = json.get("toneMapper").and_then(Value::as_str) {
         let mode = match t.to_ascii_lowercase().as_str() {
-            "agx" => Some(1.0),
-            "aces" | "simplified-aces" | "simplified_aces" => Some(2.0),
+            "agx" => Some(3.0),
+            "aces" | "simplified-aces" | "simplified_aces" => Some(4.0),
             "basic" | "base" | "filmic" | "reinhard" => Some(0.0),
             _ => None,
         };
@@ -223,7 +223,7 @@ mod tests {
         assert!((s.light.exposure - 1.5).abs() < 1e-9);
         assert!((s.light.highlights + 45.0).abs() < 1e-9);
         assert!((s.light.shadows - 38.0).abs() < 1e-9);
-        assert!((s.light.tone_mapper - 1.0).abs() < 1e-9);
+        assert!((s.light.tone_mapper - 3.0).abs() < 1e-9);
         assert!(r.applied.contains(&"light.exposure".to_string()));
         assert!(r.applied.contains(&"light.toneMapper".to_string()));
         for k in ["colorCalibration", "lutPath", "crop"] {

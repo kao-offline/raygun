@@ -153,6 +153,8 @@ pub struct FinishParams {
     /// A LUT profile and its amount (0..2), applied to the display-encoded colour.
     pub lut: Option<(std::sync::Arc<crate::lut::Lut3d>, f32)>,
     pub tone: ToneMap,
+    pub rapidraw: Option<&'static crate::rapidraw::Transform>,
+    pub rapidraw_adjustment: bool,
     pub ops: ColorOps,
     /// Calibration: primaries matrix (row-major, linear Rec.2020) and shadows tint (−1..1).
     pub calib: Option<[[f32; 3]; 3]>,
@@ -229,6 +231,8 @@ impl FinishParams {
             calib: if calibration { crate::colorops::calibration_matrix(&s.calibration) } else { None },
             shadow_tint: if calibration { (s.calibration.shadows_tint / 100.0) as f32 } else { 0.0 },
             tone: base_tone(s, info, peak),
+            rapidraw: crate::rapidraw::Transform::for_mode(s.light.tone_mapper_mode()),
+            rapidraw_adjustment: s.light.contrast != 0.0 || s.light.whites != 0.0 || s.light.blacks != 0.0,
             lut: crate::lut::get(&s.profile.id).map(|l| (l, (s.profile.amount / 100.0).clamp(0.0, 2.0) as f32)),
             ops: ColorOps::new(s),
             curves: curve_luts(&s.curve),
@@ -279,6 +283,9 @@ impl FinishParams {
 pub fn base_tone(s: &DevelopSettings, info: &SourceInfo, peak: f32) -> ToneMap {
     let l = &s.light;
     let mapper = l.tone_mapper_mode();
+    if mapper >= 3 {
+        return ToneMap::display_hdr(l.contrast, l.whites, l.blacks, peak);
+    }
     match s.process.process() {
         Process::V1 => match info.camera_tone.as_ref().filter(|_| info.raw && peak <= 1.0) {
             Some(curve) => ToneMap::camera(curve, l.contrast, l.whites, l.blacks).reshaped(mapper),
@@ -530,8 +537,11 @@ pub(crate) fn finish_with<T: Copy + Default + Send>(
             }
 
             // --- tone map on luminance, highlight desaturation
+            if let Some(transform) = fp.rapidraw {
+                c = transform.apply(c);
+            }
             let yl = luminance_2020(c);
-            let o = tone.apply(yl);
+            let o = if fp.rapidraw.is_some() && !fp.rapidraw_adjustment { yl } else { tone.apply(yl) };
             let mut d = if yl > 1e-9 { c.map(|v| v * o / yl) } else { [0.0; 3] };
             let k = tone.chroma_scale(o);
             if k != 1.0 {

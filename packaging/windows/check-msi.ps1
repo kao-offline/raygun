@@ -28,7 +28,7 @@ foreach ($row in (Read-Rows 'SELECT `Key` FROM `Registry`' 1)) {
   if ($row.Values[0] -match '(?i)LightCraft') { throw "MSI writes a stock application registry key: $($row.Values[0])" }
 }
 $files = @(Read-Rows 'SELECT `FileName` FROM `File`' 1 | ForEach-Object { ($_.Values[0] -split '\|')[-1] })
-foreach ($required in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'OFL-Inter.txt') {
+foreach ($required in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'LICENSE-LGPL-2.1', 'NOTICE', 'OFL-Inter.txt') {
   if ($files -notcontains $required) { throw "MSI is missing $required" }
 }
 Write-Output "ok: compiled MSI $($properties.ProductVersion), independent identity and required notices"

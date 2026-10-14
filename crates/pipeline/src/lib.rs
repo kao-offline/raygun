@@ -36,6 +36,7 @@ pub mod masks;
 pub mod optics;
 pub mod output;
 pub mod profiles;
+pub mod rapidraw;
 pub mod redeye;
 pub mod spots;
 pub mod tone;
