@@ -402,6 +402,7 @@ fn explorer_select_command(path: &str) -> std::process::Command {
 /// for Help ▸ Open Log Folder.
 fn services(ctx: egui::Context, log_file: Option<&std::path::Path>) -> Services {
     Services {
+        export_worker: None,
         // Commands' file dialogs run on their own thread (#191): a dialog on the UI thread
         // stopped the window answering the compositor, which then reported the app as hung.
         picker: Some(Box::new(move |req: lightcraft_ui_egui::pick::PickRequest| {

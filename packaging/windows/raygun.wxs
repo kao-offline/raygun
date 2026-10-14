@@ -184,6 +184,7 @@
       <File Id="RaygunLicense" Source="$(var.BinDir)\LICENSE" />
       <File Id="RaygunMitNotice" Source="$(var.BinDir)\LICENSE-MIT" />
       <File Id="RaygunApacheNotice" Source="$(var.BinDir)\LICENSE-APACHE" />
+      <File Id="RaygunRawlerNotice" Source="$(var.BinDir)\LICENSE-LGPL-2.1" />
       <File Id="RaygunNotice" Source="$(var.BinDir)\NOTICE" />
       <Files Include="$(var.BinDir)\OFL-*.txt" />
     </ComponentGroup>

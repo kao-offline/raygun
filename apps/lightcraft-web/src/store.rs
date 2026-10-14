@@ -162,6 +162,9 @@ impl Originals {
         session.media.file_loader = Some(l);
         session.media.file_probe = Some(p);
         let s = self.clone();
+        session.media.file_bytes =
+            Some(Arc::new(move |path| s.get(path).map(|b| b.to_vec()).ok_or_else(|| format!("{path}: the original is not loaded"))));
+        let s = self.clone();
         session.media.preview_loader =
             Some(Arc::new(move |path: &str, max_edge: usize| lightcraft_engine::files::embedded_preview_srgb(&s.get(path)?, max_edge)));
     }

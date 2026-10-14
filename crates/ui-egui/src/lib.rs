@@ -154,6 +154,8 @@ pub struct Services {
     pub write: Option<WriteFn>,
     /// Thread-safe writer: with it, UI-started exports run in the background (desktop only).
     pub write_shared: Option<SharedWrite>,
+    /// Browser worker exports, with the same progress/cancellation as native exports.
+    pub export_worker: Option<export_task::StartWorker>,
     /// PNG encoder (the host links an image encoder; the UI crate stays codec-free).
     pub png: Option<PngEncode>,
     /// Show a file in the system file manager (desktop only).

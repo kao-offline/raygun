@@ -73,6 +73,13 @@ const FIELDS: &[(&str, usize)] = &[
     ("OUT_Y", 3),
     ("OUT_TRC", 1),
     ("OUT_GAMMA", 1),
+    ("RR_MODE", 1),
+    ("RR_ADJUST", 1),
+    ("RR_TO_SRGB", 9),
+    ("RR_FROM_SRGB", 9),
+    ("RR_IN", 9),
+    ("RR_OUT", 9),
+    ("RR_CURVE_OFF", 1),
     // first row of a band dispatch (the kernel runs over rows Y0.., see `render`)
     ("Y0", 1),
 ];
@@ -156,8 +163,21 @@ pub fn finish_block(fp: &FinishParams, masks: &[[f32; MASK_TERMS]], present: &Pr
     for m in masks {
         aux.extend_from_slice(m);
     }
+    let rr_curve_off = aux.len();
+    if fp.rapidraw.is_some_and(|t| t.mode == 3) {
+        aux.extend_from_slice(lightcraft_pipeline::rapidraw::curve());
+    }
 
     let mut p = Block::new();
+    if let Some(t) = fp.rapidraw {
+        p.u("RR_MODE", t.mode as u32);
+        p.b("RR_ADJUST", fp.rapidraw_adjustment);
+        p.fs("RR_TO_SRGB", &t.to_srgb.into_iter().flatten().collect::<Vec<_>>());
+        p.fs("RR_FROM_SRGB", &t.from_srgb.into_iter().flatten().collect::<Vec<_>>());
+        p.fs("RR_IN", &t.agx_in.into_iter().flatten().collect::<Vec<_>>());
+        p.fs("RR_OUT", &t.agx_out.into_iter().flatten().collect::<Vec<_>>());
+        p.u("RR_CURVE_OFF", rr_curve_off as u32);
+    }
     p.u("W", fp.w as u32);
     p.u("H", fp.h as u32);
     p.u("NMASK", masks.len() as u32);

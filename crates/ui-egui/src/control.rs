@@ -469,7 +469,9 @@ pub fn export_active(app: &mut LightcraftApp, p: &Value) -> Result<Value, String
     }
     let to = Destination { dir: dir.clone(), exact };
     let background = p.get("background").and_then(Value::as_bool).unwrap_or(false) && app.services.write_shared.is_some();
-    let out = if background {
+    let out = if app.services.export_worker.is_some() {
+        crate::export_task::start_worker(app, &ids, opts, to)?
+    } else if background {
         let items = lightcraft_engine::export::prepare_batch(&mut app.session, &ids, &opts)?;
         crate::export_task::start(app, items, opts, to)?
     } else {

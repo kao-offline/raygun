@@ -271,6 +271,17 @@ pub struct Catalog {
 }
 
 impl Catalog {
+    /// Read-only snapshot for remote export: selected photos and their keyword/label rules.
+    /// No library journal, unrelated photos, albums or folder state crosses the boundary.
+    pub fn export_snapshot(&self, ids: &[PhotoId]) -> Self {
+        Self {
+            photos: ids.iter().filter_map(|id| self.photos.get(id).map(|p| (*id, p.clone()))).collect(),
+            keyword_list: self.keyword_list.clone(),
+            label_names: self.label_names.clone(),
+            ..Self::new()
+        }
+    }
+
     pub fn new() -> Catalog {
         Catalog { next_photo: 1, next_album: 1, next_stack: 1, ..Default::default() }
     }

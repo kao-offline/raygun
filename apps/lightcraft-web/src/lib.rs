@@ -18,9 +18,13 @@
 
 pub mod backup;
 pub mod bench;
+pub mod export_wire;
 pub mod files;
 pub mod store;
 pub mod wire;
+
+#[cfg(target_arch = "wasm32")]
+mod export_worker;
 
 #[cfg(target_arch = "wasm32")]
 mod backend;

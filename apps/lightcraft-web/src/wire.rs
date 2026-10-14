@@ -22,6 +22,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::store::hash_of_path;
 
+/// Allocate the final RGBA buffer once, after validating a worker's dimensions and byte length.
+pub fn transfer_image(width: usize, height: usize, bytes: usize) -> Result<lightcraft_raster::Rgba8, String> {
+    let pixels = width.checked_mul(height).ok_or("render worker: image dimensions overflow")?;
+    if pixels == 0 || pixels.checked_mul(4) != Some(bytes) || bytes > 192 << 20 {
+        return Err("render worker: invalid or oversized image".into());
+    }
+    let mut data = Vec::new();
+    data.try_reserve_exact(pixels).map_err(|_| "render worker: not enough memory")?;
+    data.resize(pixels, [0; 4]);
+    Ok(lightcraft_raster::Rgba8 { width, height, data })
+}
+
 /// One render request for a worker.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WireJob {
@@ -336,6 +348,17 @@ impl CacheWatch {
 mod tests {
     use super::*;
     use lightcraft_engine::Session;
+
+    #[test]
+    fn transfer_allocates_final_pixels_and_rejects_hostile_dimensions() {
+        let mut image = transfer_image(2, 3, 24).unwrap();
+        image.data.as_flattened_mut().copy_from_slice(&[7; 24]);
+        assert_eq!(image.data, vec![[7; 4]; 6]);
+        assert!(transfer_image(usize::MAX, 2, 0).is_err());
+        assert!(transfer_image(0, 2, 0).is_err());
+        assert!(transfer_image(2, 3, 23).is_err());
+        assert!(transfer_image(1 << 27, 1, 1 << 29).is_err());
+    }
 
     #[test]
     fn clearing_index_changes_disk_namespace_and_survives_restart() {

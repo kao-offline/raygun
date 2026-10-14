@@ -145,16 +145,24 @@ are the same in every version, so serve them with `Cache-Control: no-cache` (not
   threads or `SharedArrayBuffer`. If no worker starts, rendering falls back to the main thread.
 - **Every develop control** (sliders, curves, mixer, grading, masking, crop…) works as it does
   on the desktop, since it's the same crate.
+  Whole-frame drag previews temporarily use at most 512 pixels on their long edge
+  to keep browser processing and texture uploads bounded. Releasing the drag restores
+  the normal preview size. Zoomed pixel windows and exports retain their requested size.
 - **Export downloads the file.** *Export…* (<kbd>⌘⇧E</kbd>) runs the same `app.export` path as
   the desktop app (`lightcraft_engine::export`: JPEG/PNG/TIFF/WebP, sizing, naming). The host's
   `write` service hands each file to the browser as a download instead of writing it to disk.
+  Rendering and encoding run in a separate disposable `export-worker.js` instance, using
+  the shared Rust encoder and naming/metadata rules. Originals load asynchronously one at
+  a time; progress appears in the activity stack and cancellation terminates the worker.
+  The worker is released after the batch. Temporary-memory libraries also supply originals
+  to preview and export workers.
 - **Automation.** `await lightcraft.command("library.info", "{}")` runs any engine or UI command
   by id on the next frame and resolves to the JSON result (`web.stats` reports storage, workers
   and the render queue). This is how the headless-Chrome checks drive the page.
 
 ## Not yet
 
-- **Exports and auto-adjustments run on the main thread** (they need the original's pixels
+- **Auto-adjustments run on the main thread** (they need the original's pixels
   there). Right after a reload, the first such command on a photo whose original isn't in memory
   yet fails with "still loading" and works a moment later.
 - **Durability is "a frame later", not fsync-before-return:** a crash or tab kill in the few

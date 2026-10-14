@@ -694,11 +694,29 @@ pub struct RenderResult {
     pub display: Option<u64>,
 }
 
+#[cfg(any(test, target_arch = "wasm32"))]
+fn browser_draft_bounds(width: usize, height: usize) -> (usize, usize) {
+    const EDGE: usize = 512;
+    let longest = width.max(height);
+    if longest <= EDGE || width == 0 || height == 0 {
+        return (width, height);
+    }
+    let scale = |side: usize| ((side as u128 * EDGE as u128 / longest as u128) as usize).max(1);
+    (scale(width), scale(height))
+}
+
 impl RenderJob {
     /// Render at draft quality (interactive drags). Gets its own result key.
     pub fn draft(mut self) -> Self {
         if self.request.quality != Quality::Draft {
             self.request.quality = Quality::Draft;
+            #[cfg(target_arch = "wasm32")]
+            if self.request.window.is_none() {
+                // Whole-frame drags show a temporary smaller texture. The normal
+                // request returns immediately after release; 1:1 windows keep their
+                // pixel coordinates. Settings/radii remain resolution independent.
+                (self.request.max_w, self.request.max_h) = browser_draft_bounds(self.request.max_w, self.request.max_h);
+            }
             self.key ^= 0x9e37_79b9_7f4a_7c15;
         }
         self
@@ -1450,6 +1468,16 @@ mod thumbnail_hash_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn browser_draft_size_is_bounded_and_preserves_frame_aspect() {
+        assert_eq!(super::browser_draft_bounds(2400, 1600), (512, 341));
+        assert_eq!(super::browser_draft_bounds(1600, 2400), (341, 512));
+        assert_eq!(super::browser_draft_bounds(400, 300), (400, 300));
+        assert_eq!(super::browser_draft_bounds(usize::MAX, usize::MAX), (512, 512));
+        assert_eq!(super::browser_draft_bounds(usize::MAX, 1), (512, 1));
+        assert_eq!(super::browser_draft_bounds(0, 0), (0, 0));
+    }
+
     use super::*;
 
     #[test]

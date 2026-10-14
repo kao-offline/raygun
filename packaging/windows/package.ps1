@@ -122,7 +122,7 @@ $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Clear-PackageFolder $Stage
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin 'lightcraft.exe'), (Join-Path $Bin 'lightcraft-cli.exe') $Stage
-foreach ($file in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
+foreach ($file in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'LICENSE-LGPL-2.1', 'NOTICE') {
   Copy-Item -LiteralPath (Join-Path $Root $file) -Destination $Stage
 }
 Copy-Item -LiteralPath (Join-Path $Root 'assets/fonts/OFL-Inter.txt') -Destination $Stage
@@ -167,7 +167,7 @@ $Portable = Join-Path $TargetDir "windows-package\raygun-$Version-windows-$Arch-
 Clear-PackageFolder $Portable
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage '*.exe') $Portable
-foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
+foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'LICENSE-LGPL-2.1', 'NOTICE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
 }

@@ -8,7 +8,7 @@
 
 <p align="center">
   <b>Fast photo library + non-destructive RAW developer in pure Rust.</b><br>
-  LightCraft UI reused verbatim. RapidRAW features land as modes of existing tools. Desktop first, WASM-compatible.
+  LightCraft UI adapted for Raygun. RapidRAW features land as modes of existing tools. Desktop first, WASM-compatible.
 </p>
 
 <p align="center">
@@ -28,15 +28,15 @@
 
 Raygun builds on LightCraft and uses RapidRAW as a feature reference:
 
-- **LightCraft** (`https://github.com/storytold/lightcraft`) — pure-Rust library, develop pipeline, GPU `wgpu` CPU-exact rendering, command registry, MCP/CLI/control channel. Its `crates/ui-egui` is reused verbatim.
-- **RapidRAW** (`https://github.com/CyberTimon/RapidRAW`) — feature reference for tone science, masking/AI workflow, film/LUT handling, culling/library polish. Ported as modes of existing Raygun tools, not separate panels. No direct code copy until each dependency license (`rawler`, `lensfun`, `ort`, models) is cleared in `AGENTS.md`.
+- **LightCraft** (`https://github.com/storytold/lightcraft`) — pure-Rust library, develop pipeline, GPU `wgpu` CPU-exact rendering, command registry, MCP/CLI/control channel. Its `crates/ui-egui` supplies the adapted UI.
+- **RapidRAW** (`https://github.com/CyberTimon/RapidRAW`) — selected tone-science and RAW decoding algorithms adapted into existing Raygun tools under the specific licence reviews in `AGENTS.md`. The full engine port is incomplete; see [`docs/rapidraw-port.md`](docs/rapidraw-port.md).
 
 License: **AGPL-3.0-or-later** (see `LICENSE`). Upstream MIT/Apache notices retained in `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE`.
 
 Implemented Raygun additions include RapidRAW `.rrdata` adjustment import,
 AgX-style/ACES-style tone shoulders, depth-range masks (with a focus fallback
 when no depth matte exists), duplicate groups and export-size estimation.
-The RapidRAW decoder and complete AI stack have not been ported.
+The complete RapidRAW decoder and AI stack have not been ported; predictive Olympus decoding is the first reviewed Rawler adaptation.
 
 Web app: [raygun.kaooffline.top](https://raygun.kaooffline.top).
 The existing Cloudflare deployment is documented in [hosting/README.md](hosting/README.md).

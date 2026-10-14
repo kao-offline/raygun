@@ -1184,7 +1184,10 @@ pub fn encode_with_metadata(img: &Rgba8, o: &ExportOptions, meta: Option<&Metada
 }
 
 /// Output sharpening and the watermark on an 8-bit render in `o.effective_space()`.
-fn finish_8bit(img: &Rgba8, o: &ExportOptions) -> Rgba8 {
+fn finish_8bit<'a>(img: &'a Rgba8, o: &ExportOptions) -> std::borrow::Cow<'a, Rgba8> {
+    if o.sharpen == SharpenFor::None && o.watermark.is_none() {
+        return std::borrow::Cow::Borrowed(img);
+    }
     let mut img = img.clone();
     output_sharpen(&mut img, o.sharpen, o.sharpen_amount);
     let space = o.effective_space();
@@ -1192,7 +1195,7 @@ fn finish_8bit(img: &Rgba8, o: &ExportOptions) -> Rgba8 {
         let wm = Watermark { color: srgb8_in(space, wm.color), target: Some(space), ..wm.clone() };
         draw_watermark(&mut img, &wm);
     }
-    img
+    std::borrow::Cow::Owned(img)
 }
 
 /// Output sharpening and the watermark on a high-bit-depth render.
@@ -1483,6 +1486,17 @@ fn render_weight(full_px: usize, long: usize, level: crate::media::SourceLevel, 
 }
 
 impl PreparedExport {
+    /// Original to load asynchronously before executing in a browser worker.
+    pub fn source_path(&self) -> Option<&str> {
+        match &self.work {
+            Work::Render(w) => match &w.job.origin {
+                lightcraft_catalog::Source::File { path } => Some(path),
+                _ => None,
+            },
+            Work::File { path, .. } => Some(path),
+        }
+    }
+
     pub fn run(self) -> Result<Exported, String> {
         let file_name = self.file_name;
         match self.work {
@@ -1612,6 +1626,31 @@ pub fn run_batch(
 ) -> Result<Vec<serde_json::Value>, String> {
     let lanes = export_parallelism(items.len());
     run_batch_with(items, &mut Placer::new(o, to, write, exists, stop_on_error), progress, lanes)
+}
+
+/// Sequential browser batch: load each original asynchronously, then use the same encoder,
+/// destination/conflict rules and error handling as native exports. Never preload a whole batch.
+pub async fn run_batch_async<F: std::future::Future<Output = Result<(), String>>>(
+    items: Vec<PreparedExport>,
+    o: &ExportOptions,
+    to: &Destination,
+    write: &mut dyn FnMut(&str, &[u8]) -> Result<(), String>,
+    exists: &dyn Fn(&str) -> bool,
+    progress: &mut dyn FnMut(usize, &str) -> bool,
+    prepare: &mut dyn FnMut(&PreparedExport) -> F,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut placer = Placer::new(o, to, write, exists, false);
+    placer.single = items.len() == 1;
+    for (i, item) in items.into_iter().enumerate() {
+        if !progress(i, &item.file_name) {
+            break;
+        }
+        let loaded = prepare(&item).await;
+        let (photo, name, guard) = (item.photo, item.file_name.clone(), item.guard.clone());
+        let result = loaded.and_then(|()| run_gated(item));
+        placer.place(photo, name, &guard, result)?;
+    }
+    Ok(placer.out)
 }
 
 /// How many photos of a batch of `n` render side by side. Each render already spreads its rows
@@ -1889,6 +1928,16 @@ mod tests {
             *p = [(x * 2) as u8, (y * 3) as u8, ((x * y) % 255) as u8, 255];
         }
         img
+    }
+
+    #[test]
+    fn exports_without_sharpening_or_watermarks_borrow_pixels() {
+        let image = test_image();
+        let options = ExportOptions::default();
+        assert!(matches!(finish_8bit(&image, &options), std::borrow::Cow::Borrowed(_)));
+        let sharpened = finish_8bit(&image, &ExportOptions { sharpen: SharpenFor::Screen, ..options });
+        assert!(matches!(sharpened, std::borrow::Cow::Owned(_)));
+        assert_ne!(sharpened.data, image.data);
     }
 
     #[test]
@@ -2572,6 +2621,47 @@ mod tests {
     /// GPU off mid-run) may differ from a CPU one by an LSB, never in name, size or order.
     fn shape(files: &[serde_json::Value]) -> Vec<serde_json::Value> {
         files.iter().map(|f| json!({"path": f["path"], "width": f["width"], "height": f["height"], "error": f["error"]})).collect()
+    }
+
+    #[test]
+    fn asynchronous_batch_preserves_names_order_and_handles_load_failure_and_cancel() {
+        use std::future::Future;
+        use std::task::{Context, Poll, Waker};
+        let mut s = crate::Session::with_demo();
+        let ids: Vec<_> = s.visible().iter().copied().take(3).collect();
+        let options = ExportOptions::from_json(&json!({"format": "png", "width": 40, "naming": "same"}));
+        let expected = lanes_batch(&mut s, &ids, &options, 1, false, usize::MAX).0.unwrap();
+        for (failure, cancel_at) in [(false, 3), (true, 3), (false, 1)] {
+            let items = prepare_batch(&mut s, &ids, &options).unwrap();
+            let to = Destination { dir: "out".into(), exact: None };
+            let mut written = Vec::new();
+            let mut write = |path: &str, _: &[u8]| {
+                written.push(path.to_string());
+                Ok(())
+            };
+            let mut loaded = Vec::new();
+            let mut prepare = |item: &PreparedExport| {
+                loaded.push(item.photo);
+                std::future::ready(if failure && loaded.len() == 2 { Err("original unavailable".into()) } else { Ok(()) })
+            };
+            let mut progress = |i: usize, _: &str| i < cancel_at;
+            let result = {
+                let mut future = std::pin::pin!(run_batch_async(items, &options, &to, &mut write, &|_| false, &mut progress, &mut prepare));
+                let Poll::Ready(result) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
+                    panic!("ready loaders should finish")
+                };
+                result.unwrap()
+            };
+            if failure {
+                assert_eq!(result[1]["error"], "original unavailable");
+                assert_eq!(written.len(), 2);
+                assert_eq!(result[2]["path"], "out/same-2.png");
+            } else {
+                assert_eq!(shape(&result), shape(&expected[..cancel_at]));
+                assert_eq!(written.len(), cancel_at);
+            }
+            assert_eq!(loaded, ids[..cancel_at]);
+        }
     }
 
     // Issue #496: photos rendered side by side give the same files, names, order and progress as

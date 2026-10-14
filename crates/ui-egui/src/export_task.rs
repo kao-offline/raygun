@@ -4,11 +4,11 @@
 //! encoded and written on the worker (several side by side: [`run_batch`]); its row in the
 //! activity stack shows the count, the file in progress and ✕ (issue #345).
 //!
-//! Needs [`crate::Services::write_shared`] (a thread-safe writer); without it (web) the batch runs
-//! synchronously as before.
+//! Native exports use [`crate::Services::write_shared`]. Browser hosts can install
+//! [`crate::Services::export_worker`] for a disposable worker with the same progress/cancel UI.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
 use lightcraft_engine::activity::{Cancel, TaskGuard};
@@ -16,6 +16,26 @@ use lightcraft_engine::export::{Destination, ExportOptions, PreparedExport, run_
 use serde_json::{Value, json};
 
 use crate::LightcraftApp;
+
+pub trait WorkerHandle {
+    fn poll(&mut self);
+}
+
+pub struct WorkerChannel {
+    pub progress: Arc<Mutex<(usize, String)>>,
+    pub cancel: Arc<AtomicBool>,
+    pub result: Sender<Result<Vec<Value>, String>>,
+}
+
+pub type StartWorker = Box<
+    dyn FnMut(
+        &lightcraft_engine::Session,
+        &[lightcraft_engine::catalog::PhotoId],
+        ExportOptions,
+        Destination,
+        WorkerChannel,
+    ) -> Result<Box<dyn WorkerHandle>, String>,
+>;
 
 pub struct ExportTask {
     pub total: usize,
@@ -25,6 +45,28 @@ pub struct ExportTask {
     rx: Receiver<Result<Vec<Value>, String>>,
     /// The export's row in the activity stack (`activity.cancel` sets `cancel`).
     guard: TaskGuard,
+    worker: Option<Box<dyn WorkerHandle>>,
+}
+
+pub fn start_worker(
+    app: &mut LightcraftApp,
+    ids: &[lightcraft_engine::catalog::PhotoId],
+    opts: ExportOptions,
+    to: Destination,
+) -> Result<Value, String> {
+    if app.export.is_some() {
+        return Err("an export is already running".into());
+    }
+    let start = app.services.export_worker.as_mut().ok_or("no export worker")?;
+    let progress = Arc::new(Mutex::new((0, String::new())));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = channel();
+    let worker = start(&app.session, ids, opts, to, WorkerChannel { progress: progress.clone(), cancel: cancel.clone(), result: tx })?;
+    let guard = app.session.activity.start("export", "Exporting", Cancel::Flag(cancel.clone()));
+    guard.progress(0, ids.len() as u64);
+    app.export = Some(ExportTask { total: ids.len(), progress, cancel, rx, guard, worker: Some(worker) });
+    app.last_export_result = None;
+    Ok(json!({"background": true, "total": ids.len()}))
 }
 
 impl ExportTask {
@@ -62,7 +104,7 @@ pub fn start(app: &mut LightcraftApp, items: Vec<PreparedExport>, opts: ExportOp
     work();
     let guard = app.session.activity.start("export", "Exporting", Cancel::Flag(cancel.clone()));
     guard.progress(0, total as u64);
-    app.export = Some(ExportTask { total, progress, cancel, rx, guard });
+    app.export = Some(ExportTask { total, progress, cancel, rx, guard, worker: None });
     Ok(json!({"background": true, "total": total}))
 }
 
@@ -108,13 +150,16 @@ pub fn start_contact_sheet(app: &mut LightcraftApp, params: &Value) -> Result<Va
     work();
     let row = app.session.activity.start("export", "Exporting contact sheet", Cancel::Flag(cancel.clone()));
     row.progress(0, total as u64);
-    app.export = Some(ExportTask { total, progress, cancel, rx, guard: row });
+    app.export = Some(ExportTask { total, progress, cancel, rx, guard: row, worker: None });
     Ok(json!({"background": true, "total": total}))
 }
 
 /// Per frame: keep the activity row up to date; when the batch finishes, report it.
 pub fn poll(app: &mut LightcraftApp, ctx: &egui::Context) {
-    let Some(task) = &app.export else { return };
+    let Some(task) = &mut app.export else { return };
+    if let Some(worker) = &mut task.worker {
+        worker.poll();
+    }
     match task.rx.try_recv() {
         Ok(r) => {
             let cancelled = task.cancel.load(Ordering::Relaxed);
@@ -143,7 +188,10 @@ pub fn poll(app: &mut LightcraftApp, ctx: &egui::Context) {
                     app.last_export_result = Some(json!({"files": files, "cancelled": cancelled}));
                     m
                 }
-                Err(e) => e,
+                Err(e) => {
+                    app.last_export_result = Some(json!({"error": e, "cancelled": cancelled}));
+                    e
+                }
             };
             app.toast(ctx, msg);
         }
@@ -154,7 +202,41 @@ pub fn poll(app: &mut LightcraftApp, ctx: &egui::Context) {
         }
         Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             app.export = None;
+            app.last_export_result = Some(json!({"error": "Export stopped unexpectedly"}));
             app.toast(ctx, crate::i18n::tr("Export stopped unexpectedly"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod worker_tests {
+    use super::*;
+
+    struct CancelWorker(WorkerChannel);
+    impl WorkerHandle for CancelWorker {
+        fn poll(&mut self) {
+            if self.0.cancel.load(Ordering::Relaxed) {
+                self.0.result.send(Ok(Vec::new())).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn host_worker_uses_activity_cancel_and_releases_batch_for_retry() {
+        let services =
+            crate::Services { export_worker: Some(Box::new(|_, _, _, _, channel| Ok(Box::new(CancelWorker(channel))))), ..Default::default() };
+        let mut app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+        let id = app.session.catalog.photos().next().unwrap().id;
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            start_worker(&mut app, &[id], ExportOptions::default(), Destination::default()).unwrap();
+            assert!(start_worker(&mut app, &[id], ExportOptions::default(), Destination::default()).is_err());
+            let row = app.session.activity.list().into_iter().find(|row| row.kind == "export").unwrap();
+            app.session.activity.cancel(row.id).unwrap();
+            poll(&mut app, &ctx);
+            assert!(app.export.is_none());
+            assert_eq!(app.last_export_result.as_ref().unwrap()["cancelled"], true);
+            assert!(app.session.activity.list().is_empty());
         }
     }
 }

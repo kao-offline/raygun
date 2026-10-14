@@ -29,7 +29,7 @@ rm -rf "$WORK"
 mkdir -p "$WORK/$NAME"
 # Cross-compilation also writes host build scripts/proc-macros into target/web.
 # Ship an explicit static-file list, never Cargo's caches or native binaries.
-for file in index.html worker.js lightcraft_web.js lightcraft_web_bg.wasm raygun.svg; do
+for file in index.html worker.js export-worker.js lightcraft_web.js lightcraft_web_bg.wasm raygun.svg; do
   [ -f "$SITE/$file" ] || { echo "error: $SITE/$file missing" >&2; exit 1; }
   cp "$SITE/$file" "$WORK/$NAME/"
   for suffix in gz br; do

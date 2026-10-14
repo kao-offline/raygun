@@ -41,7 +41,22 @@ GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html), after the user accepts its 
 Commercial use is subject to those terms, including applicable source, licence and
 notice obligations on redistribution. Enabling that offer in releases remains a
 maintainer decision. The ONNX reader and CPU/GPU executor are our Rust implementation;
-no darktable, RawSpeed, LibRaw or other GPL decoder/runtime code is included.
+no native darktable, RawSpeed or LibRaw library is linked.
+
+crates/raw/src/vendor/orfc.rs adapts the Olympus predictive decoder from RapidRAW-DngLab's
+Rawler fork at a32bc1ff1f4f3c56d4d3226082f6eb17414f9159, Daniel Vogelbacher,
+Pedro Côrte-Real and DngLab/Rawler contributors (Rawler builds on Rawloader),
+under LGPL-2.1 (LICENSE-LGPL-2.1). Raygun contributors (2026) added bounded allocations,
+checked bit reads, wide predictor arithmetic and explicit errors, removed unsafe/panic
+paths, and used Raygun's existing metadata and camera-colour code. No camera database is
+included. Source and build instructions are in the public Raygun repository.
+
+crates/pipeline/src/rapidraw.rs adapts the AgX and simplified-ACES mathematical transforms
+from RapidRAW, Copyright Timon Käch and RapidRAW contributors, under AGPL-3.0:
+https://github.com/CyberTimon/RapidRAW/tree/74597d066685283588502edbecd747bfe80404cf
+The Raygun contributors (2026) adapted them to linear Rec.2020, safe Rust, reusable LUTs
+and Raygun's CPU/WGSL parameter layout. This does not include RapidRAW's camera tables,
+native dependencies, model weights, film LUTs or other assets.
 
 Builds made with craft-fonts (the optional CRAFT_FONTS_DIR build input; all official releases)
 also embed the fonts listed in https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md

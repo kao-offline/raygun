@@ -9,6 +9,7 @@ pub(crate) mod crx_wavelet;
 pub mod nef;
 pub mod nefc;
 pub mod orf;
+mod orfc;
 pub mod pef;
 pub mod raf;
 mod rafc;
