@@ -1106,3 +1106,34 @@ fn undo_and_redo_show_the_photo_they_change() {
     s.execute("edit.undo", &json!({})).unwrap();
     assert_eq!(s.selection, before, "a step over several photos keeps the selection");
 }
+
+#[test]
+fn rapidraw_batch_crop_uses_each_photo_dimensions_and_undoes_as_one_step() {
+    use lightcraft_catalog::{Photo, PhotoId, Source};
+    let mut s = demo();
+    for (id, w, h) in [(100, 600, 400), (101, 1200, 800), (102, 50, 50)] {
+        let name = format!("test-{id}.jpg");
+        let p = Photo::new(PhotoId(id), Source::File { path: name.clone() }, &name, "JPEG", w, h, "");
+        s.catalog.apply(lightcraft_catalog::Op::AddPhoto { photo: Box::new(p) }).unwrap();
+    }
+    s.execute("library.select", &json!({"ids": [100, 101, 102], "active": 100})).unwrap();
+    let r = s
+        .execute(
+            "develop.importRrdata",
+            &json!({"ids": [100, 101, 102], "adjustments": {
+                "exposure": 1, "crop": {"x": 60, "y": 40, "width": 300, "height": 200}
+            }}),
+        )
+        .unwrap();
+    assert_eq!(r["photos"].as_array().unwrap().len(), 3);
+    assert!(r["unmapped"].as_array().unwrap().contains(&json!("crop")));
+    assert_eq!(s.develop_of(PhotoId(100)).unwrap().crop.geometry.rect.x0, 0.1);
+    assert_eq!(s.develop_of(PhotoId(101)).unwrap().crop.geometry.rect.x0, 0.05);
+    assert_eq!(s.develop_of(PhotoId(102)).unwrap().crop.geometry.rect, lightcraft_geom::Rect::UNIT);
+    s.execute("edit.undo", &json!({})).unwrap();
+    for id in [100, 101, 102] {
+        let d = s.develop_of(PhotoId(id)).unwrap();
+        assert_eq!(d.crop.geometry.rect, lightcraft_geom::Rect::UNIT);
+        assert_eq!(d.light.exposure, 0.0);
+    }
+}

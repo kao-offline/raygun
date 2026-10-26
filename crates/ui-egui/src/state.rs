@@ -533,6 +533,11 @@ pub struct NameEdit {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Dialog {
+    /// Paste a RapidRAW sidecar into the selection captured when opened.
+    ImportRrdata {
+        text: String,
+        ids: Vec<u64>,
+    },
     ContactSheet {
         options: lightcraft_engine::contact_sheet::Options,
     },

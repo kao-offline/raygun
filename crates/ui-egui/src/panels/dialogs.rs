@@ -84,6 +84,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         Dialog::RenameAlbum { .. } => "Rename Album",
         Dialog::Rename { .. } => "Rename Photos",
         Dialog::Import { .. } => "Import Photos",
+        Dialog::ImportRrdata { .. } => "Import RapidRAW Adjustments",
         Dialog::LabelNames { .. } => "Edit Color Label Names",
         Dialog::CaptureTime { .. } => "Edit Capture Time",
         Dialog::RenameKeyword { .. } => "Rename Keyword",
@@ -452,6 +453,15 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                                 *into = k;
                             }
                         }
+                    });
+                }
+                Dialog::ImportRrdata { text, ids } => {
+                    ui.label(format!("Apply to {} selected photo(s)", ids.len()));
+                    ui.label("Paste the JSON from a RapidRAW .rrdata sidecar (up to 1 MiB).");
+                    ui.label("Unsupported settings are reported after import. You can undo this change.");
+                    egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                        let r = ui.add(egui::TextEdit::multiline(text).code_editor().desired_rows(10).desired_width(f32::INFINITY).char_limit(lightcraft_engine::rrdata::MAX_RRDATA_BYTES));
+                        crate::widgets::register(ui.ctx(), "field:rrdata", r.rect);
                     });
                 }
                 Dialog::TextPrompt { value, hint, .. } => {
@@ -1031,6 +1041,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                 if matches!(
                     dlg,
                     Dialog::Import { .. }
+                        | Dialog::ImportRrdata { .. }
                         | Dialog::Export { .. }
                         | Dialog::ContactSheet { .. }
                         | Dialog::NewAlbum { .. }
@@ -1216,6 +1227,23 @@ pub fn confirm_dialog(app: &mut LightcraftApp, dlg: &Dialog) -> Result<serde_jso
             created_in(app, "album.create", json!({"name": name, "folder": folder, "addSelected": !folder, "parent": parent}))
         }
         Dialog::RenameAlbum { id, name } => app.run("album.rename", json!({"id": id, "name": name})),
+        Dialog::ImportRrdata { text, ids } => {
+            let adjustments = lightcraft_engine::rrdata::parse_rrdata(text)?;
+            if ids.is_empty() {
+                return Err("Select a photo before importing adjustments".into());
+            }
+            let result = app.run("develop.importRrdata", json!({"adjustments": adjustments, "ids": ids}))?;
+            let skipped: Vec<&str> =
+                result.get("unmapped").and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(serde_json::Value::as_str).collect();
+            let message = if skipped.is_empty() {
+                "RapidRAW adjustments imported".to_string()
+            } else {
+                format!("RapidRAW import: not carried over: {}", skipped.join(", "))
+            };
+            let ctx = app.tasks.repaint.clone().unwrap_or_default();
+            app.toast(&ctx, message);
+            Ok(result)
+        }
         Dialog::TextPrompt { value, command, params, key, .. } => {
             let mut p = params.clone();
             p[key.as_str()] = json!(value.trim());

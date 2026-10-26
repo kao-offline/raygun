@@ -61,12 +61,15 @@ Weighted completion (✅ = 1, 🟡 = ½, 🚫 left out): **81.2%** of 519 in-sco
 | RG-EMPTY | Empty first-launch library | P0 | ✅ | `apps/lightcraft/src/main.rs` | Persistent libraries seed only with `--seed-demo`; 0.2.1 packaged native and live web fresh libraries verified at zero photos. |
 | RG-UPSTREAM | Incorporate upstream LightCraft | P1 | 🟡 | `docs/upstream-sync.md` | Upstream remote and reviewed merge/rebrand procedure; unattended source integration remains open. |
 | RG-RR-TONE | RapidRAW tone transforms | P1 | 🟡 | `ctl:light.toneMapper`, `cmd:develop.importRrdata`, `crates/pipeline/src/rapidraw.rs`, `crates/gpu/tests/equivalence.rs` | Actual AgX and simplified ACES modes 3/4 pass independent CPU references and native GPU equivalence within 1 LSB. Legacy modes remain unchanged. Whole-pipeline visual/HDR parity remains open. |
+| RG-MCP-SKILLS | Contextual agent editing workflows | P1 | ?? | `crates/mcp/src/skills.rs`, `crates/mcp/src/server.rs`, `docs/mcp.md` | Existing stdio MCP plus six pinned MIT workflow references, live library prompts and read-only photo templates. Local clients supply inference; browser-hosted stdio and autonomous agent orchestration are not provided. |
+| RG-RR-IMPORT | RapidRAW saved-edit import | P1 | ?? | `cmd:develop.importRrdata`, `cmd:file.importRrdata`, `crates/engine/src/rrdata.rs`, `crates/ui-egui/src/tests_rrdata.rs` | Desktop/web JSON dialog; per-photo pixel crops, quarter turns, flips and in-frame straighten with atomic geometry and batch undo. Calibration, masks, LUT files and transparent-border straighten remain open. |
 | RG-RAW-ORF | Predictive-compressed Olympus RAW | P0 | 🟡 | `crates/raw/src/vendor/orfc.rs`, `crates/raw/tests/orf_corpus.rs` | E-M1 and E-M10 III sensor samples match independent references exactly; malformed/truncated payloads return errors. Other models, 14-bit and multi-strip verification remain open. |
 | RG-COEXIST | Install alongside stock LightCraft | P0 | 🟡 | `packaging/windows/raygun.wxs`, `packaging/windows/check-identity.ps1`, `packaging/windows/check-msi.ps1` | Compiled 0.2.1 MSI passed independent product/component/registry identity and notice checks; old MSI rejected. Actual installation/upgrade against the user's live apps remains untested. |
 | RG-WEB-PERF | Responsive browser editing | P0 | 🟡 | `docs/performance-web.md` | 0.2.1 first frame median 441 -> 225 ms. Three paired 0.2.2 beta runs on a 24MP ARW: steady draft p95 233 -> 83 ms, export acceptance 12–25 ms, identical JPEGs; cancellation/failure/retry and persistent reload passed. The 60 ms large-RAW goal and mobile coverage remain open. |
 
 ## Top gaps
 
+RapidRAW saved-edit import now includes a desktop/web dialog and supported crop/rotation/flip geometry; calibration, masks, external LUTs and out-of-frame straighten remain gaps.
 RapidRAW adaptation remains partial: [`docs/rapidraw-port.md`](rapidraw-port.md).
 Predictive ORF sensor decoding is verified on E-M1 and E-M10 III; broader model,
 14-bit and multi-strip coverage remain gaps. AgX/ACES pass CPU references, native

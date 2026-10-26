@@ -5,7 +5,7 @@
 ## Raygun progress (M0–M4 landed, all loop-green)
 
 - **M0:** Fork green — AGPL relicense, Raygun branding (`assets/raygun.svg`), agent loop (`tools/agent-loop/`), GH project doc (`.github/RAYGUN-PROJECT.md`). `cargo check -p lightcraft` green.
-- **M1:** RapidRAW `.rrdata` importer as `develop.importRrdata` — core tone/color/detail/curves/HSL/grading map as modes of existing controls; calibration/masks/geometry/LUT-files reported unmapped. CLI-visible (`lightcraft-cli commands`).
+- **M1:** RapidRAW `.rrdata` importer as `develop.importRrdata` — core tone/color/detail/curves/HSL/grading map as modes of existing controls; calibration/masks/LUT-files reported unmapped; M14 adds supported crop/rotation/flip import. CLI-visible (`lightcraft-cli commands`).
 - **M2:** Tone mapper modes — new `light.toneMapper` control (0 base / 1 AgX-style / 2 ACES-style) reshaping only the tone shoulder; default 0 renders byte-identical. `.rrdata` `toneMapper` now maps.
 - **M3:** Depth-range mask kind + depth mattes + `ai.status` — `mask.add kind=depthRange` uses shipped depth mattes when present, else a documented focus-sharpness fallback; AI stays opt-in (AI-free default), `ai.status` reports it.
 - **M4:** `cull.duplicates` (signature-based near-duplicate groups + optional reject-others) and `export.estimate` (in-memory render reporting exact bytes, writes nothing).
@@ -21,9 +21,28 @@ worker and temporary-memory originals can reach preview workers. The eight-step
 quality gate and browser correctness checks pass. Three paired 24MP RAW runs
 reduce steady draft p95 from 233 to 83 ms; export acceptance is 12–25 ms, with
 byte-identical JPEGs. The 60 ms goal remains open and total export throughput is
-not improved. Release packaging and deployment are pending. See
+not improved. Version 0.2.2 is released and deployed at raygun.kaooffline.top. See
 [`docs/rapidraw-port.md`](docs/rapidraw-port.md) for remaining scope; native runtime,
 model, lens-profile and broad camera coverage are not full-port claims.
+
+## Agent editing context (M14)
+
+The existing native stdio MCP exposes editing/render/export commands and the
+connected library. Six unmodified, MIT-licensed reference workflows from
+f1shh/photo-xmp-editing are pinned and bundled: masking, region design, technical
+foundation, tonal hierarchy, creative colour grading and skin optimization.
+MCP prompts attach live library and active-photo context; resource templates
+inspect individual photos without changing selection. Local clients provide
+inference. The browser cannot host a stdio MCP process.
+
+## Saved-edit interchange (M14)
+
+The desktop/web import dialog accepts pasted RapidRAW sidecar JSON, reports
+unsupported settings, captures the target selection, and imports as one undo step.
+Geometry conversion covers pixel/percent crops, quarter turns, flips and in-frame
+straighten; malformed geometry leaves the previous framing intact. Full RapidRAW
+render parity, calibration, masks, external LUTs and transparent-border rotations
+remain open. See `docs/rapidraw-port.md` for the supported interchange contract.
 
 ## Raygun release 0.2.1 evidence
 
