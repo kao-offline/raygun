@@ -1,4 +1,4 @@
-# LightCraft MCP server
+# Raygun MCP server
 
 `lightcraft-cli mcp` exposes LightCraft to AI agents through the
 [Model Context Protocol](https://modelcontextprotocol.io): newline-delimited JSON-RPC 2.0 over
@@ -284,3 +284,56 @@ are untouched. A failed export is an `isError` tool result. Transport mutexes re
 
 Connect mode and exports inside `command_batch` remain synchronous and do not report MCP
 progress or cancellation. Use a direct headless export call for this behavior.
+
+## Built-in sourced editing workflows (0.2.3)
+
+`prompts/list` exposes six existing reference workflows: masking, region design,
+technical foundation, tonal hierarchy, creative colour grading, and skin-tone
+optimization. These are six unmodified references from **one** existing MIT skill,
+[f1shh/photo-xmp-editing](https://github.com/f1shh/my-skills/tree/812a674f1c8fd55c7d40c49e15a4ecfba8d269ff/photo-xmp-editing),
+pinned to that revision; source/license evidence is in `crates/mcp/skills/photo-xmp-editing/`.
+They are not invented Raygun skills or a claim that darktable tools are installed.
+
+`prompts/get {"name":"masking-workflow","arguments":{"goal":"Lift the subject while protecting skin"}}`
+returns the source workflow, current library/selection/count context, and a bridge
+requiring Raygun command/control discovery and before/after preview review. It
+never executes the reference's external shell commands, downloads models, or
+changes photos. Each reference is also readable at `raygun://skills/<name>`.
+
+Resource templates `raygun://photo/{id}` and `raygun://develop/{id}` expose any
+photo in the explicitly connected library without changing the active selection.
+The existing query/album/collection tools expose that library; this server does
+not enumerate arbitrary disks or publish every private library automatically.
+Use one MCP registration per library, or connect to the running desktop library.
+
+Local Codex, Claude Code, OpenCode and other stdio MCP clients use the same
+`lightcraft-cli mcp --connect 127.0.0.1:7980` endpoint (the binary retains its
+compatibility name). Agent inference remains in the client: Raygun supplies the
+library, editing tools, sourced prompts and renders. No agent credentials or
+chat history are exposed by this server. The web app remains standalone WASM;
+a browser tab cannot itself host a stdio server for local clients.
+
+### Local Windows agent connection
+
+To keep the Raygun connection separate from a stock LightCraft control server,
+start the installed Raygun app with its own port:
+
+```powershell
+& "C:\Program Files\Raygun\lightcraft.exe" --control 19023
+codex mcp add raygun -- "C:\Program Files\Raygun\lightcraft-cli.exe" mcp --compact --connect 127.0.0.1:19023
+claude mcp add --scope user raygun -- "C:\Program Files\Raygun\lightcraft-cli.exe" mcp --compact --connect 127.0.0.1:19023
+```
+
+Save and close an existing app session before starting it with the control flag;
+the persistent library lock prevents two owners. Agent registration alone does
+not prove library connectivity. Verify `doc_inspect` returns the expected catalog
+before editing. The six new prompts require the 0.2.3 CLI; older installed CLIs
+retain their previous capabilities until upgraded. `--compact` keeps the command
+catalog on demand instead of filling the client's context with every command.
+
+For OpenCode, merge this entry into its existing `mcp` config object (preserve
+other entries):
+
+```json
+{"raygun":{"type":"local","command":["C:\\Program Files\\Raygun\\lightcraft-cli.exe","mcp","--compact","--connect","127.0.0.1:19023"],"enabled":true}}
+```

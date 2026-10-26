@@ -19,6 +19,7 @@ mod backend;
 mod base64;
 mod headless;
 mod server;
+mod skills;
 mod tools;
 
 pub use backend::{Backend, ProgressHook, Remote};

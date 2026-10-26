@@ -171,6 +171,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("app.quit", "Quit Raygun", Some("Cmd+Q"), "File"),
     ("file.importPresets", "Import Profiles & Presets…", None, "File"),
     ("file.exportPresets", "Export Presets…", None, "File"),
+    ("file.importRrdata", "Import RapidRAW Adjustments...", None, "File"),
     ("file.importKeywords", "Import Keywords…", None, "File"),
     ("file.exportKeywords", "Export Keywords…", None, "File"),
     // Edit panel ▸ Curve ▸ Point Curve dropdown
@@ -1411,6 +1412,14 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             }
             return Some(r);
         }
+        "file.importRrdata" => {
+            let ids: Vec<u64> = app.session.targets(&json!({})).into_iter().map(|id| id.0).collect();
+            if ids.is_empty() {
+                return Some(Err("Select a photo before importing adjustments".into()));
+            }
+            app.ui.dialog = Some(Dialog::ImportRrdata { text: String::new(), ids });
+            return Some(Ok(Value::Null));
+        }
         "file.importKeywords" => {
             // a keyword list file: Lightroom Classic's, Capture One's, Photo Supreme's (.utf8)
             let path = match p.get("path").and_then(Value::as_str) {
@@ -1594,9 +1603,13 @@ pub fn ui_enabled(app: &LightcraftApp, id: &str) -> bool {
     match id {
         "dialog.contactSheet" | "app.contactSheet" => !cfg!(target_arch = "wasm32") && app.session.active().is_some() && app.export.is_none(),
         s if s.starts_with("panel.") || s.starts_with("tool.") || s.starts_with("section.") => app.session.active().is_some() || s == "panel.close",
-        "app.export" | "dialog.export" | "dialog.createPreset" | "dialog.rename" | "dialog.captureTime" | "dialog.copySettings" => {
-            app.session.active().is_some()
-        }
+        "file.importRrdata"
+        | "app.export"
+        | "dialog.export"
+        | "dialog.createPreset"
+        | "dialog.rename"
+        | "dialog.captureTime"
+        | "dialog.copySettings" => app.session.active().is_some(),
         "photo.tagFromTracklog" => app.session.active().is_some() && app.services.pick_tracklog.is_some(),
         "app.exportPrevious" => app.session.active().is_some() && app.session.last_export.is_some(),
         "dialog.pasteSettings" => app.session.active().is_some() && app.session.clipboard.is_some(),

@@ -165,7 +165,7 @@ impl Server {
                 let version = if SUPPORTED_VERSIONS.contains(&asked) { asked } else { PROTOCOL_VERSION };
                 Ok(json!({
                     "protocolVersion": version,
-                    "capabilities": {"tools": {"listChanged": false}, "resources": {"subscribe": false, "listChanged": false}},
+                    "capabilities": {"tools": {"listChanged": false}, "resources": {"subscribe": false, "listChanged": false}, "prompts": {"listChanged": false}},
                     "serverInfo": {"name": "lightcraft", "title": "Raygun", "version": env!("CARGO_PKG_VERSION")},
                     "instructions": format!("{INSTRUCTIONS} Backend: {}.", self.backend.describe()),
                 }))
@@ -195,18 +195,86 @@ impl Server {
                 };
                 Ok(result.to_value())
             }
-            "resources/list" => Ok(json!({"resources": [
-                resource(DOCUMENT_URI, "document", "Library document", "Library state and counts (same as doc_inspect)"),
-                resource(COMMANDS_URI, "commands", "Command catalog", "Every command (same as command_list)"),
-                resource(LIBRARY_URI, "library", "Library state", "Current source, filter, sort, selection, active photo/mask and undo/redo labels (library.state)"),
-                resource(PHOTOS_URI, "photos", "Photos in view", "The photos in the current view with ids, ratings, flags and metadata (catalog.query)"),
-                resource(PHOTO_URI, "active-photo", "Active photo", "Everything about the active photo: file, metadata, develop settings, albums, history (photo.inspect)"),
-                resource(DEVELOP_URI, "develop", "Develop settings", "The active photo's full develop settings JSON (develop.get)"),
-                resource(CONTROLS_URI, "controls", "Develop controls", "Every develop slider with id, range, default and current value (develop.controls)"),
+            "prompts/list" => Ok(json!({"prompts": crate::skills::prompts()})),
+            "prompts/get" => {
+                let name = params.get("name").and_then(Value::as_str).ok_or((INVALID_PARAMS, "missing prompt name".into()))?;
+                if crate::skills::find(name).is_none() {
+                    return Err((INVALID_PARAMS, format!("unknown editing workflow: {name}")));
+                }
+                let args = params.get("arguments");
+                if args.is_some_and(|v| !v.is_object() || v.as_object().is_some_and(|m| m.keys().any(|key| key != "goal"))) {
+                    return Err((INVALID_PARAMS, "prompt arguments must be an object with optional goal".into()));
+                }
+                let goal = match args.and_then(|v| v.get("goal")) {
+                    None => "",
+                    Some(Value::String(value)) if value.len() <= 4096 => value,
+                    _ => return Err((INVALID_PARAMS, "goal must be a string of at most 4096 bytes".into())),
+                };
+                let mut context = self.guarded(doc_inspect).and_then(|v| v).map_err(|e| (INTERNAL_ERROR, e))?;
+                if let Some(id) = context.pointer("/library/selection/active").and_then(Value::as_u64) {
+                    context["activePhoto"] = self
+                        .guarded(|b| b.call("engine.execute", json!({"command": "photo.inspect", "params": {"id": id}})))
+                        .and_then(|v| v)
+                        .map_err(|e| (INTERNAL_ERROR, e))?;
+                }
+                let text = crate::skills::text(name, goal, &context).ok_or((INVALID_PARAMS, "unknown workflow".into()))?;
+                Ok(
+                    json!({"description": "Existing editing workflow plus live library context", "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}),
+                )
+            }
+            "resources/list" => {
+                let mut resources = vec![
+                    resource(DOCUMENT_URI, "document", "Library document", "Library state and counts (same as doc_inspect)"),
+                    resource(COMMANDS_URI, "commands", "Command catalog", "Every command (same as command_list)"),
+                    resource(
+                        LIBRARY_URI,
+                        "library",
+                        "Library state",
+                        "Current source, filter, sort, selection, active photo/mask and undo/redo labels (library.state)",
+                    ),
+                    resource(
+                        PHOTOS_URI,
+                        "photos",
+                        "Photos in view",
+                        "The photos in the current view with ids, ratings, flags and metadata (catalog.query)",
+                    ),
+                    resource(
+                        PHOTO_URI,
+                        "active-photo",
+                        "Active photo",
+                        "Everything about the active photo: file, metadata, develop settings, albums, history (photo.inspect)",
+                    ),
+                    resource(DEVELOP_URI, "develop", "Develop settings", "The active photo's full develop settings JSON (develop.get)"),
+                    resource(
+                        CONTROLS_URI,
+                        "controls",
+                        "Develop controls",
+                        "Every develop slider with id, range, default and current value (develop.controls)",
+                    ),
+                ];
+                resources.extend(crate::skills::resources());
+                Ok(json!({"resources": resources}))
+            }
+            "resources/templates/list" => Ok(json!({"resourceTemplates": [
+                {"uriTemplate": "raygun://photo/{id}", "name": "photo-by-id", "description": "Inspect a photo in the connected library without changing selection", "mimeType": "application/json"},
+                {"uriTemplate": "raygun://develop/{id}", "name": "develop-by-id", "description": "Develop settings for a photo in the connected library", "mimeType": "application/json"}
             ]})),
-            "resources/templates/list" => Ok(json!({"resourceTemplates": []})),
             "resources/read" => {
                 let uri = params.get("uri").and_then(Value::as_str).ok_or((INVALID_PARAMS, "missing `uri`".to_string()))?;
+                if let Some(name) = uri.strip_prefix(crate::skills::PREFIX) {
+                    let text = crate::skills::find(name).ok_or((RESOURCE_NOT_FOUND, format!("workflow not found: {name}")))?;
+                    return Ok(json!({"contents": [{"uri": uri, "mimeType": "text/markdown", "text": text}]}));
+                }
+                for (prefix, command) in [("raygun://photo/", "photo.inspect"), ("raygun://develop/", "develop.get")] {
+                    if let Some(id) = uri.strip_prefix(prefix) {
+                        let id = id.parse::<u64>().map_err(|_| (INVALID_PARAMS, "photo id must be an unsigned integer".into()))?;
+                        let value = self
+                            .guarded(|b| b.call("engine.execute", json!({"command": command, "params": {"id": id}})))
+                            .and_then(|v| v)
+                            .map_err(|e| (INTERNAL_ERROR, e))?;
+                        return Ok(json!({"contents": [{"uri": uri, "mimeType": "application/json", "text": value.to_string()}]}));
+                    }
+                }
                 let cmd = match uri {
                     DOCUMENT_URI | COMMANDS_URI => "",
                     LIBRARY_URI => "library.state",

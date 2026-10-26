@@ -79,6 +79,8 @@ mod tests_preview_limit;
 #[cfg(test)]
 mod tests_quit_unsaved;
 #[cfg(test)]
+mod tests_rrdata;
+#[cfg(test)]
 mod tests_scroll;
 #[cfg(test)]
 mod tests_switch_library;

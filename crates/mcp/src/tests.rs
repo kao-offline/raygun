@@ -228,12 +228,16 @@ fn resources() {
     let mut s = server();
     let r = rpc(&mut s, 1, "resources/list", json!({}));
     let list = r["result"]["resources"].as_array().unwrap();
-    assert_eq!(list.len(), 7);
+    assert_eq!(list.len(), 7 + crate::skills::WORKFLOWS.len());
     for (i, res) in list.iter().enumerate() {
         let uri = res["uri"].as_str().unwrap();
         let r = rpc(&mut s, 10 + i as u64, "resources/read", json!({"uri": uri}));
         let text = r["result"]["contents"][0]["text"].as_str().unwrap_or_else(|| panic!("{uri}: {r}"));
-        serde_json::from_str::<Value>(text).unwrap();
+        if res["mimeType"] == "application/json" {
+            serde_json::from_str::<Value>(text).unwrap();
+        } else {
+            assert!(!text.is_empty());
+        }
     }
     assert_eq!(rpc(&mut s, 99, "resources/read", json!({"uri": "lightcraft://nope"}))["error"]["code"], -32002);
 }
@@ -398,4 +402,53 @@ fn the_clipboard_tool_cuts_copies_and_pastes_in_the_app() {
     let r = call_tool(&mut b, "clipboard", &json!({"action": "paste", "text": "travel"}));
     assert!(!r.is_error, "{r:?}");
     assert_eq!(b.0, vec![("ui.clipboard".to_string(), json!({"action": "paste", "text": "travel"}))]);
+}
+
+#[test]
+fn editing_prompts_have_real_sources_live_context_and_validate_arguments() {
+    let mut s = server();
+    let init = rpc(&mut s, 1, "initialize", json!({}));
+    assert_eq!(init["result"]["capabilities"]["prompts"]["listChanged"], false);
+    let list = rpc(&mut s, 2, "prompts/list", json!({}));
+    assert_eq!(list["result"]["prompts"].as_array().unwrap().len(), 6);
+    for (name, original) in crate::skills::WORKFLOWS {
+        let r = rpc(&mut s, 3, "prompts/get", json!({"name": name, "arguments": {"goal": "Protect skin and lift the subject"}}));
+        let text = r["result"]["messages"][0]["content"]["text"].as_str().unwrap_or_else(|| panic!("{r}"));
+        assert!(text.contains(original));
+        assert!(text.contains("812a674f1c8fd55c7d40c49e15a4ecfba8d269ff"));
+        assert!(text.contains("Protect skin"));
+        assert!(text.contains("Current library context"));
+        assert!(text.contains("activePhoto"));
+        assert!(text.contains("command_list"));
+        let raw = rpc(&mut s, 4, "resources/read", json!({"uri": format!("raygun://skills/{name}")}));
+        assert_eq!(raw["result"]["contents"][0]["text"], *original);
+    }
+    for args in [json!({"goal": 42}), json!({"goal": "x".repeat(4097)}), json!({"extra": "x"}), json!([])] {
+        assert_eq!(rpc(&mut s, 5, "prompts/get", json!({"name": "masking-workflow", "arguments": args}))["error"]["code"], -32602);
+    }
+    assert_eq!(rpc(&mut s, 6, "prompts/get", json!({"name": "made-up"}))["error"]["code"], -32602);
+}
+
+#[test]
+fn photo_resource_templates_are_read_only_and_validate_ids() {
+    let mut backend = Headless::demo();
+    let ids = backend.session.visible_cloned();
+    let first = ids[0].0;
+    let other = ids[1].0;
+    backend.session.execute("library.select", &json!({"ids": [first], "active": first})).unwrap();
+    let mut s = Server::new(Box::new(backend));
+    let templates = rpc(&mut s, 1, "resources/templates/list", json!({}));
+    assert_eq!(templates["result"]["resourceTemplates"].as_array().unwrap().len(), 2);
+    for kind in ["photo", "develop"] {
+        let result = rpc(&mut s, 2, "resources/read", json!({"uri": format!("raygun://{kind}/{other}")}));
+        assert!(result["result"]["contents"].is_array(), "{result}");
+        if kind == "photo" {
+            let value: Value = serde_json::from_str(result["result"]["contents"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(value["id"], other);
+        }
+        assert_eq!(rpc(&mut s, 3, "resources/read", json!({"uri": format!("raygun://{kind}/-1")}))["error"]["code"], -32602);
+    }
+    let state = rpc(&mut s, 4, "resources/read", json!({"uri": "lightcraft://library"}));
+    let state: Value = serde_json::from_str(state["result"]["contents"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(state["selection"]["active"], first);
 }

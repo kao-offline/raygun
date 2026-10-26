@@ -1062,7 +1062,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Import RapidRAW Adjustments",
             ["File"],
             None,
-            "{adjustments: {...RapidRAW .rrdata JSON...}, ids?: [photo]} — maps core tone/color/detail/curves/HSL/grading; reports unmapped keys",
+            "{adjustments: {...RapidRAW .rrdata JSON...}, ids?: [photo]} — maps tone/color/detail/curves/HSL/grading and crop/orientation; reports unmapped keys",
             has_active,
             |s, p| {
                 let adj = p.get("adjustments").cloned().ok_or_else(|| bad("develop.importRrdata", "missing `adjustments` object"))?;
@@ -1074,23 +1074,31 @@ pub fn specs() -> Vec<CommandSpec> {
                     let mut ops = Vec::new();
                     let mut applied = Vec::new();
                     let mut unmapped = Vec::new();
+                    let mut photos = Vec::new();
                     for id in ids {
                         if let Some(d) = s.develop_of(id) {
                             let mut d = (*d).clone();
-                            let r = crate::rrdata::apply_rrdata(&mut d, &adj);
-                            applied = r.applied;
-                            unmapped = r.unmapped;
+                            let dimensions = s.catalog.photo(id).map(|photo| (photo.width, photo.height));
+                            let r = crate::rrdata::apply_rrdata_for_image(&mut d, &adj, dimensions);
+                            photos.push(json!({"id": id.0, "applied": r.applied, "unmapped": r.unmapped}));
+                            applied.extend(r.applied);
+                            unmapped.extend(r.unmapped);
                             if let Some(op) = s.develop_op(id, d, "Import RapidRAW") {
                                 ops.push(op);
                             }
                         }
                     }
                     s.commit("Import RapidRAW", Op::Batch { ops })?;
-                    return Ok(json!({"applied": applied, "unmapped": unmapped}));
+                    applied.sort();
+                    applied.dedup();
+                    unmapped.sort();
+                    unmapped.dedup();
+                    return Ok(json!({"applied": applied, "unmapped": unmapped, "photos": photos}));
                 }
                 let id = active(s, "develop.importRrdata")?;
                 let mut d = (*s.develop_of(id).unwrap_or_default()).clone();
-                let r = crate::rrdata::apply_rrdata(&mut d, &adj);
+                let dimensions = s.catalog.photo(id).map(|photo| (photo.width, photo.height));
+                let r = crate::rrdata::apply_rrdata_for_image(&mut d, &adj, dimensions);
                 let out = json!({"applied": r.applied, "unmapped": r.unmapped});
                 s.set_develop(id, d, "Import RapidRAW")?;
                 Ok(out)

@@ -10,18 +10,34 @@
 //!
 //! This is a v1 approximation: core tone/color/detail/curve/HSL/grading map
 //! directly where slider ranges match. Relative temperature, calibration
-//! scale differences, masks, AI patches, geometry/crop, and LUT files are
+//! scale differences, masks, AI patches, perspective, and LUT files are
 //! reported as unmapped so a later phase can promote them without silently
 //! misrendering.
 
-use lightcraft_develop::{DevelopSettings, controls};
-use lightcraft_geom::Point;
+use lightcraft_develop::{Crop, DevelopSettings, controls};
+use lightcraft_geom::{CropGeometry, Orientation, Point, Rect};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Default)]
 pub struct RrImport {
     pub applied: Vec<String>,
     pub unmapped: Vec<String>,
+}
+
+/// Maximum pasted sidecar size; protects both desktop and browser imports.
+pub const MAX_RRDATA_BYTES: usize = 1024 * 1024;
+
+/// Accept a flat adjustment object or a sidecar containing `adjustments`.
+pub fn parse_rrdata(text: &str) -> Result<Value, String> {
+    if text.len() > MAX_RRDATA_BYTES {
+        return Err("RapidRAW adjustments exceed the 1 MiB limit".into());
+    }
+    let value: Value = serde_json::from_str(text).map_err(|e| format!("Invalid RapidRAW JSON: {e}"))?;
+    let adjustments = value.get("adjustments").unwrap_or(&value);
+    if !adjustments.is_object() {
+        return Err("RapidRAW adjustments must be a JSON object".into());
+    }
+    Ok(adjustments.clone())
 }
 
 fn num(v: &Value, key: &str) -> Option<f64> {
@@ -58,8 +74,14 @@ fn curve_points(arr: Option<&Vec<Value>>) -> Option<Vec<Point>> {
     Some(pts)
 }
 
-/// Apply a RapidRAW adjustments object onto `settings` in place.
+/// Apply adjustments without image metadata. Pixel crops and nonzero straighten
+/// require [`apply_rrdata_for_image`]; they are reported as unmapped here.
 pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
+    apply_rrdata_for_image(settings, json, None)
+}
+
+/// Apply adjustments using the EXIF-oriented source dimensions, before user turns.
+pub fn apply_rrdata_for_image(settings: &mut DevelopSettings, json: &Value, dimensions: Option<(u32, u32)>) -> RrImport {
     let mut out = RrImport::default();
     // (rr_key, control_id)
     const DIRECT: &[(&str, &str)] = &[
@@ -193,9 +215,20 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
             out.unmapped.push("toneMapper".to_string());
         }
     }
-    // Known-but-unmapped in v1 (no silent misrender): calibration scale
-    // mismatch, masks/AI, geometry/crop, LUT files, brightness.
-    for key in ["colorCalibration", "brightness", "masks", "aiPatches", "crop", "lensBlurEnabled", "lutPath", "lutIntensity"] {
+    const GEOMETRY: &[&str] = &["crop", "rotation", "orientationSteps", "flipHorizontal", "flipVertical"];
+    if GEOMETRY.iter().any(|key| json.get(key).is_some()) {
+        let keys = GEOMETRY.iter().filter(|key| json.get(key).is_some()).map(|key| key.to_string());
+        match import_geometry(settings, json, dimensions) {
+            Some((orientation, crop)) => {
+                settings.orientation = orientation;
+                settings.crop = crop;
+                out.applied.extend(keys);
+            }
+            None => out.unmapped.extend(keys),
+        }
+    }
+    // Unsupported fields remain explicit rather than silently approximated.
+    for key in ["colorCalibration", "brightness", "masks", "aiPatches", "aspectRatio", "lensBlurEnabled", "lutPath", "lutIntensity"] {
         if json.get(key).is_some() {
             out.unmapped.push(key.to_string());
         }
@@ -203,10 +236,186 @@ pub fn apply_rrdata(settings: &mut DevelopSettings, json: &Value) -> RrImport {
     out
 }
 
+fn mirror_rect(mut rect: Rect, horizontal: bool, vertical: bool) -> Rect {
+    if horizontal {
+        (rect.x0, rect.x1) = (1.0 - rect.x1, 1.0 - rect.x0);
+    }
+    if vertical {
+        (rect.y0, rect.y1) = (1.0 - rect.y1, 1.0 - rect.y0);
+    }
+    rect
+}
+
+fn import_geometry(s: &DevelopSettings, json: &Value, dimensions: Option<(u32, u32)>) -> Option<(Orientation, Crop)> {
+    let orientation = match json.get("orientationSteps") {
+        Some(value) => {
+            let turns = value.as_u64()?;
+            if turns > 3 {
+                return None;
+            }
+            Orientation::from_parts(false, turns as u8)
+        }
+        None => s.orientation,
+    };
+    let horizontal = match json.get("flipHorizontal") {
+        Some(value) => value.as_bool()?,
+        None => s.crop.flip_h,
+    };
+    let vertical = match json.get("flipVertical") {
+        Some(value) => value.as_bool()?,
+        None => s.crop.flip_v,
+    };
+    let previous_rotation = if s.crop.flip_h != s.crop.flip_v { -s.crop.geometry.angle } else { s.crop.geometry.angle };
+    let rotation = match json.get("rotation") {
+        Some(value) => value.as_f64()?,
+        None => previous_rotation,
+    };
+    if !rotation.is_finite() || !(-45.0..=45.0).contains(&rotation) {
+        return None;
+    }
+    let dimensions = dimensions
+        .filter(|(w, h)| *w > 0 && *h > 0)
+        .map(|(w, h)| if orientation.swaps_axes() { (f64::from(h), f64::from(w)) } else { (f64::from(w), f64::from(h)) });
+    let rect = match json.get("crop") {
+        Some(value) if value.is_null() => Rect::UNIT,
+        Some(value) => {
+            let (w, h, round) = match value.get("unit").and_then(Value::as_str) {
+                Some("%") => (100.0, 100.0, false),
+                None | Some("px") => {
+                    let (w, h) = dimensions?;
+                    (w, h, true)
+                }
+                _ => return None,
+            };
+            if value.get("unit").is_some_and(|unit| !unit.is_string()) {
+                return None;
+            }
+            let read = |key: &str| {
+                let n = num(value, key)?;
+                n.is_finite().then_some(if round { n.round() } else { n })
+            };
+            let (x, y, width, height) = (read("x")?, read("y")?, read("width")?, read("height")?);
+            if x < 0.0 || y < 0.0 || x >= w || y >= h || width <= 0.0 || height <= 0.0 {
+                return None;
+            }
+            Rect::new(x / w, y / h, (x + width.min(w - x)) / w, (y + height.min(h - y)) / h)
+        }
+        None => mirror_rect(s.crop.geometry.rect, s.crop.flip_h, s.crop.flip_v),
+    };
+    if ![rect.x0, rect.y0, rect.x1, rect.y1].iter().all(|v| v.is_finite()) || rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return None;
+    }
+    // RapidRAW flips before straighten/crop; Raygun flips the cropped output.
+    // Conjugating the rotation and reflecting its crop preserves the same frame.
+    let geometry = CropGeometry { rect: mirror_rect(rect, horizontal, vertical), angle: if horizontal != vertical { -rotation } else { rotation } };
+    if rotation != 0.0 {
+        let (w, h) = dimensions?;
+        // RapidRAW fills outside-source corners transparently; our sampler clamps.
+        // Refuse that case instead of importing different border pixels.
+        if !geometry.is_within_image(w, h) {
+            return None;
+        }
+    }
+    let mut crop = Crop { geometry, flip_h: horizontal, flip_v: vertical, ..s.crop };
+    if json.get("crop").is_some() {
+        crop.aspect = None;
+    }
+    Some((orientation, crop))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn parses_flat_and_wrapped_sidecars_with_limits() {
+        let flat = json!({"exposure": 1});
+        assert_eq!(parse_rrdata(&flat.to_string()).unwrap(), flat);
+        assert_eq!(parse_rrdata(&json!({"adjustments": flat}).to_string()).unwrap(), flat);
+        for text in ["[]", "null", "{", r#"{"adjustments":null}"#] {
+            assert!(parse_rrdata(text).is_err());
+        }
+        assert!(parse_rrdata(&" ".repeat(MAX_RRDATA_BYTES + 1)).is_err());
+        assert!(parse_rrdata(&format!("{}0{}", "[".repeat(200), "]".repeat(200))).is_err());
+    }
+
+    #[test]
+    fn geometry_matches_pre_crop_flip_order_and_is_idempotent() {
+        use lightcraft_pipeline::geometry::Frame;
+        for turns in 0..4 {
+            let (w, h) = if turns % 2 == 0 { (600.0, 400.0) } else { (400.0, 600.0) };
+            for horizontal in [false, true] {
+                for vertical in [false, true] {
+                    for rotation in [-12.0_f64, 0.0, 17.0] {
+                        let mut s = DevelopSettings::default();
+                        let input = json!({"orientationSteps": turns, "flipHorizontal": horizontal, "flipVertical": vertical,
+                            "rotation": rotation, "crop": {"x": 150, "y": 120, "width": 100, "height": 130}});
+                        let r = apply_rrdata_for_image(&mut s, &input, Some((600, 400)));
+                        assert!(r.unmapped.is_empty(), "{input}: {r:?}");
+                        let frame = Frame::new(600, 400, &s, true);
+                        let mapping = frame.out_to_oriented(100, 130);
+                        for (x, y) in [(0.0, 0.0), (33.5, 82.0), (100.0, 130.0)] {
+                            // Independent reference: inverse fine rotation, then undo pre-crop flips.
+                            let (sin, cos) = (-rotation.to_radians()).sin_cos();
+                            let (dx, dy) = (150.0 + x - w / 2.0, 120.0 + y - h / 2.0);
+                            let mut expected = Point::new(w / 2.0 + cos * dx - sin * dy, h / 2.0 + sin * dx + cos * dy);
+                            if horizontal {
+                                expected.x = w - expected.x;
+                            }
+                            if vertical {
+                                expected.y = h - expected.y;
+                            }
+                            let actual = mapping.apply(Point::new(x, y));
+                            assert!(
+                                (actual.x - expected.x).abs() < 1e-9 && (actual.y - expected.y).abs() < 1e-9,
+                                "{input}: {actual:?} != {expected:?}"
+                            );
+                        }
+                        let before = s.clone();
+                        apply_rrdata_for_image(&mut s, &input, Some((600, 400)));
+                        assert_eq!(s, before);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn crop_units_rounding_clipping_and_null_reset() {
+        let mut s = DevelopSettings::default();
+        apply_rrdata_for_image(&mut s, &json!({"crop": {"x": 10.6, "y": 20.1, "width": 500, "height": 40.9}}), Some((100, 100)));
+        assert_eq!(s.crop.geometry.rect, Rect::new(0.11, 0.20, 1.0, 0.61));
+        let r = apply_rrdata(&mut s, &json!({"crop": {"unit": "%", "x": 10, "y": 20, "width": 40, "height": 50}}));
+        assert!(r.unmapped.is_empty());
+        assert_eq!(s.crop.geometry.rect, Rect::new(0.1, 0.2, 0.5, 0.7));
+        apply_rrdata(&mut s, &json!({"crop": null}));
+        assert_eq!(s.crop.geometry.rect, Rect::UNIT);
+    }
+
+    #[test]
+    fn invalid_geometry_is_atomic_while_tone_still_imports() {
+        for invalid in [
+            json!({"crop": {"unit": "%", "x": 50, "y": 20, "width": 1e-300, "height": 20}}),
+            json!({"crop": {"x": -1, "y": 0, "width": 10, "height": 10}}),
+            json!({"crop": {"unit": "other", "x": 1, "y": 0, "width": 10, "height": 10}}),
+            json!({"orientationSteps": 4}),
+            json!({"flipVertical": 1}),
+            json!({"rotation": 46}),
+            json!({"rotation": 12, "crop": null}),
+        ] {
+            let mut s = DevelopSettings::default();
+            let before = s.crop;
+            let mut input = invalid.clone();
+            input["exposure"] = json!(1.5);
+            input["flipHorizontal"] = json!(true);
+            let r = apply_rrdata_for_image(&mut s, &input, Some((600, 400)));
+            assert_eq!(s.crop, before, "{input}");
+            assert_eq!(s.orientation, DevelopSettings::default().orientation);
+            assert_eq!(s.light.exposure, 1.5);
+            assert!(r.unmapped.contains(&"flipHorizontal".into()));
+        }
+    }
 
     #[test]
     fn maps_core_tone_and_reports_unmapped() {

@@ -14,7 +14,7 @@ in `AGENTS.md`. No camera matrices, model weights or LUT assets were imported.
 |---|---|---|
 | AgX | Actual inset/outset matrices, log encoding and sigmoid LUT; Rust CPU and WGSL | Whole-pipeline visual equivalence and HDR validation |
 | Simplified ACES | RapidRAW's fitted SDR transform; Rust CPU and WGSL | This is a fitted operator, not the entire ACES colour-management system |
-| Saved edits | New `.rrdata` tone-mapper imports select modes 3/4; old modes 0/1/2 remain unchanged | Calibration, masks, geometry and external LUT mapping remain incomplete |
+| Saved edits | New `.rrdata` tone-mapper imports select modes 3/4; old modes 0/1/2 remain unchanged | Calibration, masks, external LUT mapping and out-of-frame straighten remain incomplete |
 | Olympus predictive ORF | Checked Rust decoder adapted from Rawler; independent sensor-pixel regressions for E-M1 and E-M10 III | Other models, 14-bit and multi-strip coverage |
 | Other RAW decoders | Existing Raygun decoders retained | Compressed Samsung, Nikon HE, Canon sRAW and remaining coding variants |
 | Lens correction | Existing Raygun manual corrections | Pure-Rust Lensfun database adaptation, attribution and profile coverage |
@@ -30,3 +30,26 @@ The new tone modes are selectable in Edit → Light → Tone Mapper. Modes 1 and
 are explicitly labelled legacy approximations so existing edits do not change
 when the new transforms land. New modes use SDR output limits; they do not
 establish HDR parity.
+
+## Import saved RapidRAW edits
+
+Select the target photos, then choose **File > Import RapidRAW Adjustments...**.
+Paste the JSON contents of a `.rrdata` sidecar and confirm. Both a flat adjustment
+object and a wrapper with an `adjustments` object are accepted (maximum 1 MiB).
+The selection is captured when the dialog opens; the batch is one undo step.
+Invalid JSON keeps the dialog open. Unsupported fields appear in the result toast
+and in the command response, including per-photo results for batches.
+
+Pixel crops are rounded and clipped to each photo's EXIF-oriented dimensions after
+`orientationSteps` (0..3 clockwise quarter turns). Explicit percent crops are also
+accepted. Horizontal/vertical flips and clockwise straighten (-45..45 degrees)
+are converted to Raygun's crop order without changing their framing. Geometry is
+applied atomically per photo; malformed geometry and rotations whose crop extends
+outside the source are reported as unmapped, while supported tone edits can still
+import. This avoids silently substituting Raygun's clamped border for RapidRAW's
+transparent border. `crop: null` resets the rectangle; aspect-ratio UI locks remain
+unmapped. Existing Raygun lens/perspective edits remain in effect.
+
+Geometry conversion is original Rust code referencing the saved-edit schema and
+operation order at the pinned RapidRAW revision above; it imports no new runtime,
+assets or dependencies. This is edit interchange, not whole-pipeline pixel parity.
